@@ -1,0 +1,22 @@
+# Local dev artifacts that shouldn't (or don't need to) ship in the image.
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Runtime-generated output — regenerated fresh on each run, no need to ship
+# stale copies baked into the image.
+logs/*
+!logs/.gitkeep
+output/*
+!output/.gitkeep
+uploads/*
+!uploads/.gitkeep
+
+# NOTE: source_documents/ and Physical_Data.xlsx are intentionally NOT
+# excluded here — they're real data that should be baked into the image so
+# it's available immediately after every deploy (see Dockerfile comment).
+
+.git/
+.gitignore
+*.md

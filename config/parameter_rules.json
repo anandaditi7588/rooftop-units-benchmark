@@ -1,0 +1,11 @@
+{
+  "_comment": "Directionality rules used only to decide which competitor's numeric value gets the 'best value' highlight in the generated Excel. 'higher' means bigger numbers win (e.g. EER), 'lower' means smaller numbers win (e.g. Sound Level, Weight). Parameters not listed here are never highlighted as 'best' (comparisons like Compressor Type or Refrigerant are qualitative, not ranked).",
+  "higher_is_better": [
+    "Cooling Capacity", "Heating Capacity", "COP", "EER", "SEER", "IEER",
+    "Supply Airflow", "Static Pressure", "Compressor Stages", "Refrigerant Circuits",
+    "Thermal Efficiency", "Gas Heat Output", "Warranty"
+  ],
+  "lower_is_better": [
+    "Sound Level", "Weight", "Gas Heat Input"
+  ]
+}

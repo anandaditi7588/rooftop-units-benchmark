@@ -1,0 +1,66 @@
+# --- Core web framework -----------------------------------------------------
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.6
+jinja2>=3.1.4
+python-multipart>=0.0.9
+pydantic>=2.9.2
+
+# --- Excel / data handling ---------------------------------------------------
+openpyxl>=3.1.5
+pandas>=2.2.3
+
+# --- Web scraping -------------------------------------------------------------
+requests>=2.32.3
+beautifulsoup4>=4.12.3
+lxml>=5.3.0
+# Makes Python's HTTPS verification use the OS certificate store (Windows
+# CryptoAPI / macOS Keychain) instead of only the bundled certifi list. Fixes
+# the extremely common "every HTTPS request fails with CERTIFICATE_VERIFY_FAILED"
+# symptom caused by corporate/antivirus TLS-inspecting proxies that Windows
+# already trusts but certifi doesn't know about — without disabling verification.
+truststore>=0.9.1
+
+# --- PDF extraction -----------------------------------------------------------
+pdfplumber>=0.11.4
+PyMuPDF>=1.24.10
+
+# --- Matching engine (fuzzy + TF-IDF fallback are required; both are light) ---
+rapidfuzz>=3.9.7
+scikit-learn>=1.5.2
+
+# --- PDF report export ----------------------------------------------------------
+reportlab>=4.2.2
+
+# NOTE: version floors (>=) are used instead of hard pins because this project
+# targets whatever Python your machine has; on very new Python releases some
+# exact pins above may predate an available prebuilt wheel (this was verified
+# against Python 3.14). If you need fully reproducible installs, pin exact
+# versions yourself after confirming wheels exist for your Python version, or
+# generate a lockfile with `pip freeze > requirements.lock.txt`.
+
+# ==============================================================================
+# OPTIONAL EXTRAS — install only if you want the extra capability.
+# The app detects their absence at runtime and degrades gracefully (logs a
+# warning, keeps working with the remaining techniques), it will not crash.
+# ==============================================================================
+#
+# Semantic embeddings for parameter matching (bigger, needs to download model
+# weights the first time; without it the engine automatically falls back to
+# TF-IDF + RapidFuzz, which still works well):
+#   sentence-transformers==3.1.1
+#   torch==2.4.1
+#
+# OCR for scanned-image PDFs (also requires the Tesseract binary installed on
+# the OS — https://github.com/UB-Mannheim/tesseract/wiki on Windows):
+#   pytesseract==0.3.13
+#   pillow==10.4.0
+#
+# JavaScript-rendered manufacturer catalog pages (requires `playwright install`
+# to download browser binaries after pip install):
+#   playwright==1.47.0
+#
+# Additional PDF table extraction backends (heavier system dependencies —
+# Ghostscript/Java — pdfplumber + PyMuPDF above already cover the vast
+# majority of real-world spec sheets without these):
+#   camelot-py[cv]==0.11.0
+#   tabula-py==2.9.3

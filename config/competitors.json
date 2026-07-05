@@ -1,0 +1,93 @@
+{
+  "_comment": "Registry of supported competitors. Add a new competitor by appending an object here — no code changes required. 'search_urls' are official-domain seed pages the scraper is allowed to crawl. 'allowed_domains' is a hard allow-list: many manufacturers host their actual PDF spec sheets on a separate document CDN (not their main marketing domain) — those CDN domains must be listed here too or the scraper will correctly refuse to follow/download from them. Verified 2026-07-05 by directly fetching each URL; manufacturer sites restructure often, so re-verify if a competitor keeps coming back with 0 documents (check logs/jobs/<id>.log for 404s).",
+  "competitors": [
+    {
+      "id": "carrier",
+      "name": "Carrier",
+      "color": "#0072CE",
+      "logo": "carrier.svg",
+      "homepage": "https://www.carrier.com",
+      "allowed_domains": ["carrier.com", "shareddocs.com"],
+      "search_urls": [
+        "https://www.carrier.com/us/en/commercial/packaged-outdoor/48qe/",
+        "https://www.carrier.com/us/en/commercial/packaged-outdoor/outdoor-units/"
+      ],
+      "keywords": ["rooftop", "heat pump", "hybrid heat", "packaged", "RTU", "submittal", "specification"]
+    },
+    {
+      "id": "trane",
+      "name": "Trane",
+      "color": "#E4002B",
+      "logo": "trane.svg",
+      "homepage": "https://www.trane.com",
+      "allowed_domains": ["trane.com"],
+      "search_urls": [
+        "https://www.trane.com/commercial/north-america/us/en/products-systems/packaged-units-and-split-systems/rooftop-units/precedent-heat-pump.html"
+      ],
+      "keywords": ["rooftop", "heat pump", "precedent", "packaged", "RTU", "installation", "specification"]
+    },
+    {
+      "id": "lennox",
+      "name": "Lennox",
+      "color": "#00539B",
+      "logo": "lennox.svg",
+      "homepage": "https://www.lennox.com/commercial",
+      "allowed_domains": ["lennoxcommercial.com", "lennox.com"],
+      "search_urls": [
+        "https://www.lennox.com/commercial/commercial/resources/product-documentation"
+      ],
+      "keywords": ["rooftop", "heat pump", "packaged", "RTU", "engineering handbook", "specification"],
+      "_note": "This page's document list renders client-side (JS); the static crawler may find little here. Manual PDF drop-in into source_documents/Lennox/ is the reliable path for this competitor."
+    },
+    {
+      "id": "johnson_controls",
+      "name": "Johnson Controls (York)",
+      "color": "#003DA5",
+      "logo": "johnsoncontrols.svg",
+      "homepage": "https://www.johnsoncontrols.com",
+      "allowed_domains": ["johnsoncontrols.com", "york.com", "hvacnavigator.com"],
+      "search_urls": [
+        "https://www.johnsoncontrols.com/HVAC-Equipment/Rooftop-Units/premier"
+      ],
+      "keywords": ["rooftop", "heat pump", "premier", "RTU", "installation and maintenance", "submittal", "technical guide"]
+    },
+    {
+      "id": "daikin",
+      "name": "Daikin",
+      "color": "#582C83",
+      "logo": "daikin.svg",
+      "homepage": "https://www.daikinapplied.com",
+      "allowed_domains": ["daikinapplied.com", "daikin.com", "tahoeweb.daikinapplied.com"],
+      "search_urls": [
+        "https://www.daikinapplied.com/products/rooftop-systems/rebel"
+      ],
+      "keywords": ["rooftop", "heat pump", "rebel", "packaged", "RTU", "catalog", "specification"]
+    },
+    {
+      "id": "rheem",
+      "name": "Rheem",
+      "color": "#EE2E24",
+      "logo": "rheem.svg",
+      "homepage": "https://www.rheem.com",
+      "allowed_domains": ["rheem.com"],
+      "search_urls": [
+        "https://www.rheem.com/products/commercial/heating-and-cooling/package-hp/"
+      ],
+      "keywords": ["rooftop", "heat pump", "packaged", "RTU", "specification sheet"],
+      "_note": "This page's product grid renders client-side (JS); the static crawler may find little here. Manual PDF drop-in into source_documents/Rheem/ is the reliable path for this competitor."
+    },
+    {
+      "id": "aaon",
+      "name": "AAON",
+      "color": "#F7941D",
+      "logo": "aaon.svg",
+      "homepage": "https://www.aaon.com",
+      "allowed_domains": ["aaon.com"],
+      "search_urls": [
+        "https://www.aaon.com/",
+        "https://www.aaon.com/products/rn-series"
+      ],
+      "keywords": ["rooftop", "heat pump", "packaged", "RTU", "specification catalog", "IOM"]
+    }
+  ]
+}

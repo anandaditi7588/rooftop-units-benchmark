@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Runtime-generated output — regenerated on every run, not source.
+logs/*
+!logs/.gitkeep
+logs/jobs/
+output/*
+!output/.gitkeep
+uploads/*
+!uploads/.gitkeep
+
+# NOTE: Physical_Data.xlsx and source_documents/**/*.pdf are intentionally
+# NOT ignored — they're real project data that should ship with the app so
+# it works out of the box after every deploy.
+
+.env
