@@ -205,3 +205,75 @@ on the setup page — no other code changes required.
   responsive. For very large corpora, swap `JobManager`'s in-process thread
   model for a real task queue (Celery/RQ) — the rest of the pipeline is
   already decoupled from how the job is scheduled.
+- Benchmark jobs run one at a time on a single worker (`core/job_manager.py`)
+  — PDF extraction is CPU-bound, and several running concurrently fight over
+  Python's GIL badly enough to make the whole server feel unresponsive.
+  Starting a new job while one is active queues it instead. A job can be
+  stopped with `POST /api/cancel-benchmark/{job_id}` (also a **Cancel**
+  button on the setup page) — queued jobs cancel instantly, running ones
+  cancel after their current document finishes.
+
+## 9. Deploying so someone else can reach it
+
+Locally the app binds to `127.0.0.1`/`localhost` — only this machine can
+reach it. To share it with someone remote (not on your local network), it
+needs to run somewhere with a public address. This repo is set up to deploy
+to **Render** (free tier, deploys straight from GitHub via the included
+`Dockerfile`), but the same Dockerfile works on Railway, Fly.io, or any
+container host.
+
+### Before deploying: turn on authentication
+
+This app has no per-user login system — anyone who reaches the URL can
+start benchmarks, upload files, and see results. Locally that's fine
+(only you can reach `localhost`), but once it's public, set these two
+environment variables on your hosting platform:
+
+| Variable | Purpose |
+|---|---|
+| `RTU_AUTH_USERNAME` | Shared username for HTTP Basic Auth |
+| `RTU_AUTH_PASSWORD` | Shared password — pick something real, not a placeholder |
+
+Auth is **off** whenever either variable is unset (that's what keeps local
+dev frictionless) and turns **on** automatically the moment both are set —
+see `core/auth.py`. Anyone reaching the URL will get a browser login prompt.
+
+### Deploying to Render
+
+1. Push this repository to GitHub (create a new repo at github.com, then
+   from this project folder: `git remote add origin <your-repo-url>` and
+   `git push -u origin master`).
+2. Sign up at [render.com](https://render.com) (free, can use your GitHub
+   login).
+3. **New +** → **Web Service** → connect the GitHub repo you just pushed.
+4. Render will detect the `Dockerfile` automatically. Set:
+   - **Instance type**: Free (fine for a demo; upgrade if the client will
+     run large/frequent benchmarks — PDF extraction is CPU-bound).
+   - **Environment variables**: add `RTU_AUTH_USERNAME` and
+     `RTU_AUTH_PASSWORD` (see above).
+5. Click **Create Web Service**. First build takes a few minutes (installs
+   `requirements.txt`, bakes in `Physical_Data.xlsx` and the curated
+   `source_documents/*.pdf` files already in the repo). Render gives you a
+   URL like `https://your-app-name.onrender.com` — that's what you share
+   with your client (with the username/password separately, e.g. by phone
+   or a different channel than the link itself).
+
+### Important limitations of this deployment
+
+- **Ephemeral storage on the free tier**: `uploads/`, `output/`, and `logs/`
+  reset on every restart/redeploy. `Physical_Data.xlsx` and the PDFs already
+  committed to the repo persist fine (they're baked into the image), but
+  anything uploaded or generated *while the app is running* — a custom
+  parameter sheet, a fresh `comparison.xlsx`, newly-scraped PDFs — is lost
+  if the container restarts. Fine for a live demo session; not fine as
+  permanent storage. If ongoing use is needed, add Render's persistent Disk
+  add-on (paid) mounted at `/app/output`, `/app/uploads`, and
+  `/app/source_documents`.
+- **Free tier sleeps when idle**: Render's free web services spin down after
+  ~15 minutes of no traffic and take ~30-60 seconds to wake back up on the
+  next request. The first request after idle time will feel slow —  that's
+  expected, not broken.
+- **Live web scraping still applies**: manufacturer sites that render their
+  document lists via JavaScript (Lennox, Rheem — see section 4) behave the
+  same in the cloud as they do locally; the curated PDFs already in the repo
+  are what make Carrier/Johnson Controls/Daikin/AAON reliable out of the box.
