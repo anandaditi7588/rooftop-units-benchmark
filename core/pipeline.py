@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import re
 import time
+from dataclasses import replace as dataclass_replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -144,6 +145,8 @@ class BenchmarkPipeline:
                            competitor.name, len(all_candidates), len(docs))
             progress += progress_step
 
+        candidates_by_competitor = self._split_by_tonnage_if_present(candidates_by_competitor)
+
         job_manager.update(self.job_id, stage="matching", progress=progress,
                             message="Running AI semantic/fuzzy parameter matching…")
         parameter_rows = self._build_parameter_rows(candidates_by_competitor)
@@ -183,6 +186,63 @@ class BenchmarkPipeline:
                 "unit_query": self.unit_query,
             },
         )
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _format_tonnage(tons: float) -> str:
+        label = f"{tons:g}"  # 3.0 -> "3", 7.5 -> "7.5"
+        return f"{label} Ton"
+
+    def _split_by_tonnage_if_present(
+        self, candidates_by_competitor: dict[str, list[CandidatePhrase]]
+    ) -> dict[str, list[CandidatePhrase]]:
+        """When the source documents contain a tonnage-differentiated spec
+        table (a series documented across several unit sizes side by side),
+        expand each real competitor into one virtual competitor *column* per
+        tonnage found anywhere across all competitors — e.g. "Carrier (3
+        Ton)", "Carrier (5 Ton)", "Trane (3 Ton)" — so the comparison and
+        Excel output show every tonnage size next to each other instead of
+        collapsing them into a single blended value per competitor.
+
+        If no tonnage was detected in any document (the common case — most
+        benchmarks aren't scoped to a multi-size table), this is a no-op and
+        behavior is identical to before this feature existed.
+        """
+        tonnage_values: set[float] = {
+            c.tonnage
+            for candidates in candidates_by_competitor.values()
+            for c in candidates
+            if c.tonnage is not None
+        }
+        if not tonnage_values:
+            return candidates_by_competitor
+
+        sorted_tonnages = sorted(tonnage_values)
+        self.log.info(
+            "Detected %d tonnage size(s) in the source documents (%s) — "
+            "splitting the comparison per tonnage.",
+            len(sorted_tonnages),
+            ", ".join(self._format_tonnage(t) for t in sorted_tonnages),
+        )
+
+        expanded_competitors: list[Competitor] = []
+        expanded_candidates: dict[str, list[CandidatePhrase]] = {}
+        for competitor in self.competitors:
+            base_candidates = candidates_by_competitor.get(competitor.id, [])
+            for tons in sorted_tonnages:
+                label = self._format_tonnage(tons)
+                vcompetitor = dataclass_replace(
+                    competitor,
+                    id=f"{competitor.id}__{tons}",
+                    name=f"{competitor.name} ({label})",
+                )
+                expanded_competitors.append(vcompetitor)
+                expanded_candidates[vcompetitor.id] = [
+                    c for c in base_candidates if c.tonnage == tons
+                ]
+
+        self.competitors = expanded_competitors
+        return expanded_candidates
 
     # ------------------------------------------------------------------
     def _build_parameter_rows(

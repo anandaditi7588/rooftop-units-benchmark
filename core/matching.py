@@ -165,7 +165,10 @@ class MatchingEngine:
         """A stable identity for a candidate, used to stop the same exact
         (phrase, value) pair from being reused across sibling rows that
         share a category (see `exclude_identities` on find_best_match)."""
-        return (candidate.source_document, candidate.page_number, candidate.phrase, candidate.value)
+        return (
+            candidate.source_document, candidate.page_number,
+            candidate.phrase, candidate.value, candidate.tonnage,
+        )
 
     def find_best_match(
         self,

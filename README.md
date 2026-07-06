@@ -137,6 +137,28 @@ The scoped query is echoed back everywhere the results are: a banner row
 at the top of both sheets in `comparison.xlsx`, a banner on the dashboard,
 and `unit_query` in `benchmark.json` / the job status response.
 
+### Tonnage-wise comparison
+
+Many series are documented as a single spec table covering several unit
+sizes side by side (e.g. one table with a "3 Ton / 5 Ton / 7.5 Ton / 10
+Ton" column for every parameter). When `core/pdf_extractor.py` detects a
+table like that — from an explicit "Nominal Capacity" row, "5 Ton"-style
+header tokens, or standard nominal model-size codes (036, 048, 060, ...) —
+it tags every value with the tonnage its column represents instead of
+collapsing the whole row into one string.
+
+`core/pipeline.py` then automatically splits each selected competitor into
+one column per tonnage found anywhere across all competitors — e.g.
+**Carrier (3 Ton)**, **Carrier (5 Ton)**, **Trane (3 Ton)**, **Trane (5
+Ton)** — so `comparison.xlsx` and the dashboard show every tonnage next to
+every competitor's value for that same size, rather than one blended
+value per competitor. If a competitor's documents don't cover a given
+tonnage, that column is left as a genuine "missing" cell rather than
+guessed. This applies automatically whenever tonnage-differentiated
+tables are present — no separate toggle needed; scope it further with
+Step 2 (e.g. "High Efficiency Heat Pump") to keep the comparison to one
+product line.
+
 ### Getting real manufacturer data in
 
 The most reliable way, given how manufacturer sites are structured, is:

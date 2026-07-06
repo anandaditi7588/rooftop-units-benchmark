@@ -91,6 +91,90 @@ _POINTS_LIST_MARKER_RE = re.compile(r"\b(?:Yes/No|On/Off)\b[^\n]{0,25}\b(?:Comma
 # detection; this one is the last-resort, per-value backstop.
 _JUNK_VALUE_START_RE = re.compile(r"^\s*(?:yes/no|on/off|read/write|r/w)\b", re.IGNORECASE)
 
+# --- tonnage-per-column detection for spec tables --------------------------
+# Manufacturer spec/submittal tables commonly document an entire model-size
+# range side by side (one column per tonnage). Detecting which column is
+# which tonnage lets the pipeline split a single "3T/5T/7.5T/10T" table into
+# per-tonnage candidates instead of collapsing every size into one joined
+# string — see `_detect_column_tonnages`.
+_TONNAGE_TOKEN_RE = re.compile(r"(\d{1,2}(?:\.\d{1,2})?)\s*[- ]?tons?\b", re.IGNORECASE)
+_TONNAGE_LABEL_RE = re.compile(
+    r"\b(?:nominal\s+(?:cooling\s+)?capacity|tonnage|unit\s+size|nominal\s+size)\b",
+    re.IGNORECASE,
+)
+_MODEL_SIZE_CODE_RE = re.compile(r"^0*(\d{2,3})$")
+# Standard HVAC nominal-capacity model-size codes (kBtu/h ÷ 12 = tons) that
+# manufacturers use as column/model headers instead of spelling out "5 Ton".
+_SIZE_CODE_TO_TONS: dict[int, float] = {
+    18: 1.5, 24: 2, 30: 2.5, 36: 3, 42: 3.5, 48: 4, 60: 5,
+    72: 6, 90: 7.5, 102: 8.5, 120: 10, 150: 12.5, 180: 15,
+    210: 17.5, 240: 20, 300: 25,
+}
+
+
+def _parse_tons_cell(cell: str, allow_bare_number: bool = False) -> Optional[float]:
+    """Best-effort parse of a single table cell as a tonnage value.
+
+    ``allow_bare_number`` controls whether a plain number like "5" (with no
+    "Ton" unit and no recognized model-size code) counts as a tonnage. That's
+    only trustworthy when the *row itself* is already known to be a Nominal
+    Capacity/Tonnage/Unit Size row (see `_detect_column_tonnages`) — applied
+    to arbitrary header rows, it false-positives on every other small numeric
+    spec (amps, inches, superheat °F, ...) that happens to fall in-range.
+    """
+    if not cell:
+        return None
+    token_match = _TONNAGE_TOKEN_RE.search(cell)
+    if token_match:
+        try:
+            return float(token_match.group(1))
+        except ValueError:
+            return None
+    stripped = cell.strip()
+    size_match = _MODEL_SIZE_CODE_RE.match(stripped)
+    if size_match:
+        mapped = _SIZE_CODE_TO_TONS.get(int(size_match.group(1)))
+        if mapped is not None:
+            return mapped
+    if allow_bare_number and re.fullmatch(r"\d{1,2}(?:\.\d{1,2})?", stripped):
+        try:
+            value = float(stripped)
+        except ValueError:
+            return None
+        if 0.5 <= value <= 30:  # sane rooftop-unit tonnage range
+            return value
+    return None
+
+
+def _detect_column_tonnages(rows: list[list[str]]) -> Optional[list[Optional[float]]]:
+    """Return one tonnage-per-value-column guess for a table, or None if the
+    table doesn't look tonnage-differentiated at all (the common case).
+
+    Tried cheapest/most-reliable first: an explicit "Nominal Capacity" /
+    "Tonnage" / "Unit Size" row's own cell values are the tonnage per column
+    (bare numbers trusted here, since the row label itself confirms context);
+    failing that, header-ish rows are scanned for "5 Ton" style tokens or
+    standard nominal model-size codes (036, 048, 060, ...) — but *not* bare
+    numbers, since an unlabeled header row full of plain digits is far too
+    ambiguous (could be amps, dimensions, model years, anything).
+    """
+    for row in rows:
+        if not row or not row[0]:
+            continue
+        if _TONNAGE_LABEL_RE.search(row[0]):
+            tonnages = [_parse_tons_cell(c, allow_bare_number=True) for c in row[1:]]
+            if sum(1 for t in tonnages if t is not None) >= 2:
+                return tonnages
+
+    for row in rows[:3]:
+        if not row:
+            continue
+        tonnages = [_parse_tons_cell(c, allow_bare_number=False) for c in row[1:]]
+        if sum(1 for t in tonnages if t is not None) >= 2:
+            return tonnages
+
+    return None
+
 
 @dataclass
 class CandidatePhrase:
@@ -100,6 +184,11 @@ class CandidatePhrase:
     value: str
     source_document: str
     page_number: int
+    # Nominal unit tonnage this value belongs to, when the source table
+    # documented multiple sizes of the same series side by side (e.g. a
+    # "3 Ton / 5 Ton / 7.5 Ton" spec table). None means "not tonnage-scoped"
+    # — either a single-size document, or free-text/prose extraction.
+    tonnage: Optional[float] = None
 
 
 class PDFExtractor:
@@ -311,24 +400,52 @@ class PDFExtractor:
                     except Exception:
                         continue
                     for table in tables or []:
-                        for row in table:
-                            cells = [c.strip() if isinstance(c, str) else "" for c in (row or [])]
-                            cells = [c for c in cells if c]
-                            if len(cells) < 2:
-                                continue
-                            label, *values = cells
-                            if not re.search(r"[A-Za-z]", label):
-                                continue
-                            value = " ".join(v for v in values if v)
-                            if value and not self._is_junk_value(value):
-                                out.append(
-                                    CandidatePhrase(
-                                        phrase=label, value=value,
-                                        source_document=doc_name, page_number=page_number,
-                                    )
-                                )
+                        out.extend(self._candidates_from_one_table(table, doc_name, page_number))
         except Exception as exc:  # pragma: no cover
             self.log.warning("Table extraction failed on %s (%s)", doc_name, exc)
+        return out
+
+    def _candidates_from_one_table(
+        self, table: list, doc_name: str, page_number: int
+    ) -> list[CandidatePhrase]:
+        out: list[CandidatePhrase] = []
+        norm_rows = [
+            [c.strip() if isinstance(c, str) else "" for c in (row or [])] for row in table
+        ]
+        # Detected once per table (not per row): either every row's values are
+        # per-tonnage columns, or none are — a table doesn't mix the two.
+        tonnage_per_col = _detect_column_tonnages(norm_rows)
+
+        for cells in norm_rows:
+            non_empty = sum(1 for c in cells if c)
+            if non_empty < 2:
+                continue
+            label = cells[0] if cells else ""
+            if not label or not re.search(r"[A-Za-z]", label):
+                continue
+            value_cells = cells[1:]
+
+            if tonnage_per_col is not None and any(value_cells):
+                for idx, cell_value in enumerate(value_cells):
+                    if not cell_value or self._is_junk_value(cell_value):
+                        continue
+                    tonnage = tonnage_per_col[idx] if idx < len(tonnage_per_col) else None
+                    out.append(
+                        CandidatePhrase(
+                            phrase=label, value=cell_value,
+                            source_document=doc_name, page_number=page_number,
+                            tonnage=tonnage,
+                        )
+                    )
+            else:
+                value = " ".join(v for v in value_cells if v)
+                if value and not self._is_junk_value(value):
+                    out.append(
+                        CandidatePhrase(
+                            phrase=label, value=value,
+                            source_document=doc_name, page_number=page_number,
+                        )
+                    )
         return out
 
     # ------------------------------------------------------------------
