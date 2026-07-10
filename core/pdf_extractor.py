@@ -226,30 +226,114 @@ class PDFExtractor:
         the whole document is searched anyway, rather than silently
         returning nothing.
         """
-        candidates: list[CandidatePhrase] = []
         doc_name = pdf_path.name
 
+        if fitz is None:
+            # Degraded fallback path (PyMuPDF unavailable) — rare in practice
+            # since it's a hard requirement, not optional; not worth the same
+            # streaming treatment below since it's already an exceptional case.
+            return self._extract_candidates_pdfplumber_only(pdf_path, query)
+
+        query_norm = normalize(query) if query else None
+        skip_pages: set[int] = set()
+        relevant_pages: set[int] = set()
+        toc_count = 0
+        points_list_count = 0
+        ocr_cache: dict[int, str] = {}
+
+        def resolved_text(page_number: int, raw_text: str) -> str:
+            # OCR is the one thing worth caching across the two passes below
+            # (rare — only pages with almost no extractable text hit it —
+            # but re-running Tesseract twice per such page would be wasteful).
+            if raw_text and len(raw_text.strip()) >= 20:
+                return raw_text
+            if not self.enable_ocr:
+                return raw_text
+            if page_number not in ocr_cache:
+                ocr_cache[page_number] = self._ocr_page(pdf_path, page_number - 1) or ""
+            return ocr_cache[page_number] or raw_text
+
+        try:
+            with fitz.open(pdf_path) as doc:
+                # Pass 1 — classification only (TOC/points-list detection,
+                # query relevance scoring). Never retains a page's text past
+                # its own iteration, unlike the old approach of building a
+                # list of every page's text up front — that's what let a
+                # large multi-hundred-page manual's combined text balloon
+                # memory usage on a constrained deployment (e.g. Render's
+                # free 512MB tier).
+                for page_number, page in enumerate(doc, start=1):
+                    text = resolved_text(page_number, page.get_text("text"))
+                    if self._is_toc_page(text):
+                        skip_pages.add(page_number)
+                        toc_count += 1
+                        continue
+                    if self._is_points_list_page(text):
+                        skip_pages.add(page_number)
+                        points_list_count += 1
+                        continue
+                    if query_norm and self._page_relevance_score(query_norm, text) >= _QUERY_RELEVANCE_THRESHOLD:
+                        relevant_pages.add(page_number)
+
+                only_pages = relevant_pages if (query_norm and relevant_pages) else None
+
+                # Pass 2 — actual candidate extraction, restricted to the
+                # pages that survived classification. Re-reading each
+                # in-scope page's text is cheap CPU-wise (PyMuPDF text
+                # extraction, not table extraction) and trades a little CPU
+                # for never holding the whole document's text simultaneously.
+                candidates: list[CandidatePhrase] = []
+                for page_number, page in enumerate(doc, start=1):
+                    if page_number in skip_pages:
+                        continue
+                    if only_pages is not None and page_number not in only_pages:
+                        continue
+                    text = resolved_text(page_number, page.get_text("text"))
+                    candidates.extend(self._candidates_from_text(text, doc_name, page_number))
+        except Exception as exc:  # pragma: no cover
+            self.log.warning("PyMuPDF failed on %s (%s); trying pdfplumber", doc_name, exc)
+            return self._extract_candidates_pdfplumber_only(pdf_path, query)
+
+        if pdfplumber is not None:
+            candidates.extend(
+                self._candidates_from_tables(
+                    pdf_path, doc_name, skip_pages=skip_pages, only_pages=only_pages
+                )
+            )
+
+        if query:
+            scope_note = (
+                f"; scoped to {len(only_pages)} page(s) matching query '{query}'"
+                if only_pages is not None
+                else f"; query '{query}' did not match strongly anywhere — searched entire document"
+            )
+        else:
+            scope_note = ""
+        self.log.info(
+            "Extracted %d candidate phrases from %s (skipped %d TOC/index page(s), "
+            "%d BACnet/points-list page(s))%s",
+            len(candidates), doc_name, toc_count, points_list_count, scope_note,
+        )
+        return candidates
+
+    def _extract_candidates_pdfplumber_only(
+        self, pdf_path: Path, query: Optional[str] = None
+    ) -> list[CandidatePhrase]:
+        """Fallback used only when PyMuPDF itself is unavailable/fails."""
+        doc_name = pdf_path.name
         pages_text = self._extract_text_per_page(pdf_path)
         skip_pages: set[int] = set()
         toc_count = 0
         points_list_count = 0
         relevant_pages = self._find_relevant_pages(pages_text, query) if query else None
+        candidates: list[CandidatePhrase] = []
 
         for page_number, text in enumerate(pages_text, start=1):
-            if not text or len(text.strip()) < 20:
-                if self.enable_ocr:
-                    text = self._ocr_page(pdf_path, page_number - 1) or text
             if self._is_toc_page(text):
-                # Table of Contents / List of Figures / List of Tables pages are
-                # pure noise for spec extraction: every line is "Heading .... N",
-                # which would otherwise be misread as hundreds of fake
-                # label/value pairs (e.g. "Controls" -> "17"). Skip entirely.
                 skip_pages.add(page_number)
                 toc_count += 1
                 continue
             if self._is_points_list_page(text):
-                # BACnet/Modbus/LonTalk points-list pages: hundreds of generic
-                # "Yes/No – Command" style rows that aren't physical specs.
                 skip_pages.add(page_number)
                 points_list_count += 1
                 continue
@@ -263,19 +347,10 @@ class PDFExtractor:
                     pdf_path, doc_name, skip_pages=skip_pages, only_pages=relevant_pages
                 )
             )
-
-        if query:
-            scope_note = (
-                f"; scoped to {len(relevant_pages)} page(s) matching query '{query}'"
-                if relevant_pages is not None
-                else f"; query '{query}' did not match strongly anywhere — searched entire document"
-            )
-        else:
-            scope_note = ""
         self.log.info(
-            "Extracted %d candidate phrases from %s (skipped %d TOC/index page(s), "
-            "%d BACnet/points-list page(s))%s",
-            len(candidates), doc_name, toc_count, points_list_count, scope_note,
+            "Extracted %d candidate phrases from %s (pdfplumber-only fallback; "
+            "skipped %d TOC/index page(s), %d BACnet/points-list page(s))",
+            len(candidates), doc_name, toc_count, points_list_count,
         )
         return candidates
 
@@ -310,6 +385,22 @@ class PDFExtractor:
         of these enum-type descriptors is on its own a strong enough signal.
         """
         return bool(_POINTS_LIST_MARKER_RE.search(value)) or bool(_JUNK_VALUE_START_RE.match(value))
+
+    @staticmethod
+    def _page_relevance_score(query_norm: str, page_text: str) -> int:
+        """Single-page counterpart to `_find_relevant_pages`, used by the
+        streaming extraction path so a page's relevance can be scored the
+        moment it's read instead of requiring every page's text to be
+        collected into one big list first."""
+        if not page_text:
+            return 0
+        page_norm = normalize(page_text)
+        if not page_norm:
+            return 0
+        return max(
+            fuzz.token_set_ratio(query_norm, page_norm),
+            fuzz.partial_ratio(query_norm, page_norm),
+        )
 
     @staticmethod
     def _find_relevant_pages(pages_text: list[str], query: str) -> Optional[set[int]]:
@@ -397,10 +488,20 @@ class PDFExtractor:
                         continue
                     try:
                         tables = page.extract_tables()
+                        for table in tables or []:
+                            out.extend(self._candidates_from_one_table(table, doc_name, page_number))
                     except Exception:
                         continue
-                    for table in tables or []:
-                        out.extend(self._candidates_from_one_table(table, doc_name, page_number))
+                    finally:
+                        # pdfplumber caches each page's fully-parsed character/
+                        # object model on the Page instance and doc.pages keeps
+                        # every page alive for the life of the `with` block —
+                        # on a large multi-hundred-page document that adds up
+                        # fast. Releasing it as soon as we're done with a page
+                        # (rather than waiting for the whole document to
+                        # finish) is what actually keeps peak memory bounded.
+                        if hasattr(page, "flush_cache"):
+                            page.flush_cache()
         except Exception as exc:  # pragma: no cover
             self.log.warning("Table extraction failed on %s (%s)", doc_name, exc)
         return out
