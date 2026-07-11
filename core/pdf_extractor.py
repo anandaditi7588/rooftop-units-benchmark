@@ -146,6 +146,23 @@ def _parse_tons_cell(cell: str, allow_bare_number: bool = False) -> Optional[flo
     return None
 
 
+def _is_plausible_tonnage_progression(tonnages: list[Optional[float]]) -> bool:
+    """A genuine per-column tonnage header lists *distinct* sizes — nobody
+    documents a model lineup as "6 ton, 6 ton, 6 ton". Column order isn't a
+    reliable signal (real spec tables sometimes lead with a "largest size"
+    summary column, or pdfplumber's column ordering shifts under a complex
+    multi-row header), but repetition is: a real collision found in practice
+    was a cooling-performance table keyed by wet-bulb temperature ("72°F,
+    67°F, 62°F, 72°F, 67°F, 62°F...") where "72" happens to match a standard
+    model-size code (72 -> 6 tons) — it repeats rather than being distinct,
+    which this catches where a bare count-of-matches threshold would not.
+    """
+    non_none = [t for t in tonnages if t is not None]
+    if len(non_none) < 2:
+        return False
+    return len(set(non_none)) == len(non_none)
+
+
 def _detect_column_tonnages(rows: list[list[str]]) -> Optional[list[Optional[float]]]:
     """Return one tonnage-per-value-column guess for a table, or None if the
     table doesn't look tonnage-differentiated at all (the common case).
@@ -156,21 +173,23 @@ def _detect_column_tonnages(rows: list[list[str]]) -> Optional[list[Optional[flo
     failing that, header-ish rows are scanned for "5 Ton" style tokens or
     standard nominal model-size codes (036, 048, 060, ...) — but *not* bare
     numbers, since an unlabeled header row full of plain digits is far too
-    ambiguous (could be amps, dimensions, model years, anything).
+    ambiguous (could be amps, dimensions, model years, anything). Either way,
+    the result must look like a genuine ascending size progression — see
+    `_is_plausible_tonnage_progression`.
     """
     for row in rows:
         if not row or not row[0]:
             continue
         if _TONNAGE_LABEL_RE.search(row[0]):
             tonnages = [_parse_tons_cell(c, allow_bare_number=True) for c in row[1:]]
-            if sum(1 for t in tonnages if t is not None) >= 2:
+            if _is_plausible_tonnage_progression(tonnages):
                 return tonnages
 
     for row in rows[:3]:
         if not row:
             continue
         tonnages = [_parse_tons_cell(c, allow_bare_number=False) for c in row[1:]]
-        if sum(1 for t in tonnages if t is not None) >= 2:
+        if _is_plausible_tonnage_progression(tonnages):
             return tonnages
 
     return None
