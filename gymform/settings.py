@@ -58,6 +58,15 @@ class GymFormSettings:
     send_trainer_copy: bool = field(
         default_factory=lambda: _env("GYM_SEND_TRAINER_COPY", "1") != "0")
 
+    # --- Outgoing email: Brevo HTTP API ----------------------------------
+    # Preferred over SMTP because it sends over HTTPS. Render's free tier
+    # blocks outbound SMTP entirely (ports 25/465/587), so on free hosting an
+    # HTTP email API is the only way to send mail at all.
+    brevo_api_key: str = field(default_factory=lambda: _env("GYM_BREVO_API_KEY"))
+    # The "from" address. Brevo requires it to be a sender you have verified
+    # in their dashboard. Falls back to the office address.
+    email_from: str = field(default_factory=lambda: _env("GYM_EMAIL_FROM"))
+
     # --- Outgoing email (SMTP) ------------------------------------------
     smtp_host: str = field(
         default_factory=lambda: _env("GYM_SMTP_HOST", "smtp.gmail.com"))
@@ -114,12 +123,25 @@ class GymFormSettings:
         default_factory=lambda: _env_int("GYM_MAX_ID_PROOF_BYTES", 5 * 1024 * 1024))
 
     @property
+    def email_provider(self) -> str:
+        """How mail goes out: 'brevo', 'smtp', or 'none'.
+
+        Brevo wins when both are configured — it works on hosts that block
+        outbound SMTP, which SMTP by definition does not.
+        """
+        if self.brevo_api_key:
+            return "brevo"
+        if self.smtp_host and self.smtp_user and self.smtp_password:
+            return "smtp"
+        return "none"
+
+    @property
     def email_configured(self) -> bool:
-        return bool(self.smtp_host and self.smtp_user and self.smtp_password)
+        return self.email_provider != "none"
 
     @property
     def email_sender(self) -> str:
-        return self.smtp_from or self.smtp_user
+        return self.email_from or self.smtp_from or self.smtp_user or self.notify_email
 
     @property
     def whatsapp_provider(self) -> str:

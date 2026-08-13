@@ -37,8 +37,17 @@ services:
         sync: false
 
       # --- Email delivery ----------------------------------------------
-      # GYM_SMTP_PASSWORD must be a Gmail App Password (16 characters), not
-      # the account password — Google rejects the latter for SMTP.
+      # Use Brevo. Render's free tier blocks outbound SMTP (ports 25, 465
+      # and 587), so smtplib cannot send from a free instance no matter how
+      # correct the credentials are — Brevo goes over HTTPS instead.
+      # GYM_EMAIL_FROM must be an address verified as a sender in Brevo.
+      - key: GYM_BREVO_API_KEY
+        sync: false
+      - key: GYM_EMAIL_FROM
+        sync: false
+
+      # SMTP, kept for paid instances and self-hosting. Ignored whenever
+      # GYM_BREVO_API_KEY is set.
       - key: GYM_SMTP_USER
         sync: false
       - key: GYM_SMTP_PASSWORD

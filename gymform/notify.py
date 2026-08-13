@@ -15,6 +15,7 @@ WhatsApp has three modes, chosen automatically by what is configured:
 """
 from __future__ import annotations
 
+import base64
 import logging
 import smtplib
 import ssl
@@ -378,15 +379,112 @@ def _send_email(
     attachment: Path | None = None,
     attachment_name: str = "",
 ) -> DeliveryResult:
+    """Send one email through whichever provider is configured."""
     channel = "email" if to == settings.notify_email else "email_trainer"
+    provider = settings.email_provider
 
-    if not settings.email_configured:
+    if provider == "none":
         return DeliveryResult(
             channel, False,
-            "SMTP is not configured (set GYM_SMTP_USER and GYM_SMTP_PASSWORD). "
-            "The submission is saved on the server.",
+            "Email is not configured. Set GYM_BREVO_API_KEY (works on free "
+            "hosting), or GYM_SMTP_USER and GYM_SMTP_PASSWORD. The submission "
+            "is saved on the server either way.",
         )
 
+    if provider == "brevo":
+        return _send_email_brevo(
+            settings, channel=channel, to=to, subject=subject,
+            text_body=text_body, html_body=html_body,
+            attachment=attachment, attachment_name=attachment_name,
+        )
+    return _send_email_smtp(
+        settings, channel=channel, to=to, subject=subject,
+        text_body=text_body, html_body=html_body,
+        attachment=attachment, attachment_name=attachment_name,
+    )
+
+
+def _send_email_brevo(
+    settings: GymFormSettings,
+    *,
+    channel: str,
+    to: str,
+    subject: str,
+    text_body: str,
+    html_body: str,
+    attachment: Path | None = None,
+    attachment_name: str = "",
+) -> DeliveryResult:
+    """Send over Brevo's HTTPS API.
+
+    The reason this exists: free hosting tiers routinely block outbound SMTP
+    (Render blocks 25, 465 and 587 outright), which makes smtplib useless
+    there no matter how correct the credentials are. HTTPS on 443 is not
+    blocked, so an HTTP email API is the only way to send mail at all on a
+    free instance.
+    """
+    payload: dict = {
+        "sender": {"name": f"{SOCIETY_NAME} Gym Form", "email": settings.email_sender},
+        "to": [{"email": to}],
+        "subject": subject,
+        "textContent": text_body,
+        "htmlContent": html_body,
+    }
+
+    if attachment and attachment.exists():
+        try:
+            encoded = base64.b64encode(attachment.read_bytes()).decode("ascii")
+            payload["attachment"] = [
+                {"content": encoded, "name": attachment_name or attachment.name}
+            ]
+        except OSError as exc:  # A missing file must not lose the email.
+            logger.warning("Gym form: could not attach ID proof: %s", exc)
+
+    try:
+        response = requests.post(
+            "https://api.brevo.com/v3/smtp/email",
+            json=payload,
+            headers={
+                "api-key": settings.brevo_api_key,
+                "content-type": "application/json",
+                "accept": "application/json",
+            },
+            timeout=settings.request_timeout,
+        )
+    except requests.RequestException as exc:
+        logger.warning("Gym form: Brevo request failed: %s", exc)
+        return DeliveryResult(channel, False, f"Brevo request failed: {exc}")
+
+    if response.ok:
+        logger.info("Gym form: email sent to %s via Brevo", to)
+        return DeliveryResult(channel, True, f"Sent to {to} via Brevo")
+
+    detail = response.text[:300]
+    logger.warning("Gym form: Brevo returned %s: %s", response.status_code, detail)
+    hint = ""
+    if response.status_code == 400 and "sender" in detail.lower():
+        hint = (
+            f" The sender address ({settings.email_sender}) must be verified in "
+            "Brevo first: Senders & IPs -> Senders -> Add a sender."
+        )
+    elif response.status_code in (401, 403):
+        hint = " Check GYM_BREVO_API_KEY — Brevo rejected the key."
+    return DeliveryResult(
+        channel, False, f"Brevo returned HTTP {response.status_code}: {detail}{hint}"
+    )
+
+
+def _send_email_smtp(
+    settings: GymFormSettings,
+    *,
+    channel: str,
+    to: str,
+    subject: str,
+    text_body: str,
+    html_body: str,
+    attachment: Path | None = None,
+    attachment_name: str = "",
+) -> DeliveryResult:
     message = EmailMessage()
     message["Subject"] = subject
     message["From"] = f"{SOCIETY_NAME} Gym Form <{settings.email_sender}>"
@@ -431,6 +529,19 @@ def _send_email(
             channel, False,
             "SMTP rejected the login. For Gmail, use a 16-character App Password, "
             "not the account password.",
+        )
+    except OSError as exc:
+        # ENETUNREACH/ECONNREFUSED against a mail port almost always means the
+        # host blocks outbound SMTP rather than anything being wrong with the
+        # credentials — free hosting tiers commonly do. Say so, because the
+        # bare errno sends people off checking their password for an hour.
+        logger.warning("Gym form: SMTP connection to %s failed: %s", settings.smtp_host, exc)
+        return DeliveryResult(
+            channel, False,
+            f"Could not reach {settings.smtp_host}:{settings.smtp_port} "
+            f"({type(exc).__name__}: {exc}). Hosting providers often block outbound "
+            "SMTP — Render's free tier blocks ports 25, 465 and 587 outright. Set "
+            "GYM_BREVO_API_KEY to send over HTTPS instead, which is not blocked.",
         )
     except Exception as exc:  # noqa: BLE001 - never let delivery break a submission
         logger.exception("Gym form: could not send email to %s", to)

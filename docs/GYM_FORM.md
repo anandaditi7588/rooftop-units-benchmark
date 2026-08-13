@@ -93,22 +93,57 @@ has JavaScript switched off.
 
 ## 3. Turning on email notifications
 
-Email uses plain SMTP. With a Gmail account:
+### Read this first if you are on free hosting
 
-1. Turn on 2-Step Verification on the Google account that will *send* the mail.
+**Render's free tier blocks outbound SMTP** — ports 25, 465 and 587 — since
+26 September 2025. Gmail SMTP therefore cannot work from a free instance
+regardless of how correct your App Password is; the send fails with
+`[Errno 101] Network is unreachable`. Render's own advice is to upgrade to a
+paid instance or use an email API.
+
+So on free hosting, use **Brevo**, which sends over HTTPS (port 443, never
+blocked). It is free for 300 emails a day, forever, with no card.
+
+### Brevo setup (5 minutes)
+
+1. Sign up at [brevo.com](https://www.brevo.com).
+2. **Verify your sender address.** Left menu → *Senders, Domains & Dedicated
+   IPs* → *Senders* → *Add a sender* → enter `dulange111@gmail.com`. Brevo
+   emails you a confirmation link; click it.
+3. **Create an API key.** Top-right menu → *SMTP & API* → *API Keys* →
+   *Generate a new API key*. Copy it — it starts with `xkeysib-`.
+4. Set on the server:
+
+   ```bash
+   GYM_BREVO_API_KEY=xkeysib-...................
+   GYM_EMAIL_FROM=dulange111@gmail.com   # must match the verified sender
+   ```
+
+If the sender is not verified, Brevo rejects the send and the confirmation page
+says exactly that rather than failing silently.
+
+### SMTP (paid instances, or self-hosting)
+
+Where outbound SMTP is allowed, plain SMTP still works and needs no third-party
+account. With Gmail:
+
+1. Turn on 2-Step Verification on the account that will *send* the mail.
 2. Create an **App Password**: Google Account → Security → 2-Step Verification →
    App passwords. You get a 16-character password.
-3. Set these environment variables on the server:
+3. Set:
 
    ```bash
    GYM_SMTP_USER=the.sending.account@gmail.com
    GYM_SMTP_PASSWORD=abcdefghijklmnop     # the 16-character App Password
-   GYM_NOTIFY_EMAIL=dulange111@gmail.com  # who receives registrations
    ```
 
-> Your normal Gmail password will **not** work — Google blocks it for SMTP. If
-> the login is rejected, the confirmation page says so in plain words rather
-> than failing silently.
+> A normal Gmail password will **not** work — Google blocks it for SMTP.
+
+`GYM_BREVO_API_KEY` takes priority when both are set, because it works in
+strictly more places. `/health` reports which provider is live as
+`email_provider`.
+
+### What gets sent
 
 The office receives a formatted summary with the client list, the calculated
 fee, any rule warnings, and the uploaded ID proof attached. The trainer
@@ -118,7 +153,7 @@ agreed to (switch off with `GYM_SEND_TRAINER_COPY=0`).
 Check it works without waiting for a real trainer:
 
 ```bash
-curl -u office:yourpassword -X POST https://<your-host>/gym/admin/test-notification
+curl -u office:yourpassword -X POST https://<your-host>/admin/test-notification
 ```
 
 ---
@@ -233,7 +268,9 @@ password can never lose a registration.
 | `GYM_NOTIFY_EMAIL` | `dulange111@gmail.com` | Who receives registrations |
 | `GYM_NOTIFY_WHATSAPP` | `917588610829` | WhatsApp recipient, country code first |
 | `GYM_SEND_TRAINER_COPY` | `1` | Send the trainer their own confirmation |
-| `GYM_SMTP_HOST` | `smtp.gmail.com` | SMTP server |
+| `GYM_BREVO_API_KEY` | — | Brevo API key — sends over HTTPS, works on free hosting |
+| `GYM_EMAIL_FROM` | office address | The "from" address; must be verified in Brevo |
+| `GYM_SMTP_HOST` | `smtp.gmail.com` | SMTP server (ignored when Brevo is set) |
 | `GYM_SMTP_PORT` | `587` | SMTP port |
 | `GYM_SMTP_USER` | — | SMTP login (email sending is off until set) |
 | `GYM_SMTP_PASSWORD` | — | SMTP password / Gmail App Password |

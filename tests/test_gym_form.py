@@ -354,6 +354,82 @@ def test_notifications_are_addressed_correctly(client, monkeypatch):
     assert "New personal trainer registration" not in trainer_text
 
 
+def test_brevo_sends_over_https_when_its_key_is_set(client, monkeypatch):
+    """The route that works on hosts blocking outbound SMTP."""
+    posts: list[dict] = []
+
+    class Reply:
+        ok = True
+        status_code = 201
+        text = '{"messageId":"<abc@brevo>"}'
+
+    def fake_post(url, json=None, headers=None, timeout=None, **kwargs):
+        posts.append({"url": url, "json": json, "headers": headers})
+        return Reply()
+
+    monkeypatch.setattr("gymform.notify.requests.post", fake_post)
+    monkeypatch.setenv("GYM_BREVO_API_KEY", "xkeysib-test")
+    monkeypatch.setenv("GYM_NOTIFY_EMAIL", "office@example.com")
+    monkeypatch.setenv("GYM_EMAIL_FROM", "office@example.com")
+
+    response = client.post("/gym/submit", data=payload(), follow_redirects=False)
+    assert response.status_code == 303
+
+    assert len(posts) == 2, "office copy and trainer copy"
+    assert all("api.brevo.com" in p["url"] for p in posts)
+    assert posts[0]["headers"]["api-key"] == "xkeysib-test"
+    assert posts[0]["json"]["to"] == [{"email": "office@example.com"}]
+    assert posts[1]["json"]["to"] == [{"email": "ramesh@example.com"}]
+    assert "Anil Shah" in posts[0]["json"]["textContent"]
+    assert posts[0]["json"]["sender"]["email"] == "office@example.com"
+
+    assert "Sent" in client.get(response.headers["location"]).text
+
+
+def test_brevo_is_preferred_over_smtp(monkeypatch):
+    """Brevo works where SMTP is blocked, so it wins when both are set."""
+    monkeypatch.setenv("GYM_SMTP_USER", "someone@gmail.com")
+    monkeypatch.setenv("GYM_SMTP_PASSWORD", "app-password")
+    from gymform.settings import get_settings
+
+    assert get_settings().email_provider == "smtp"
+    monkeypatch.setenv("GYM_BREVO_API_KEY", "xkeysib-test")
+    assert get_settings().email_provider == "brevo"
+
+
+def test_brevo_rejecting_an_unverified_sender_is_explained(client, monkeypatch):
+    class Reply:
+        ok = False
+        status_code = 400
+        text = '{"code":"invalid_parameter","message":"sender is not valid"}'
+
+    monkeypatch.setattr("gymform.notify.requests.post", lambda *a, **k: Reply())
+    monkeypatch.setenv("GYM_BREVO_API_KEY", "xkeysib-test")
+
+    response = client.post("/gym/submit", data=payload(), follow_redirects=False)
+    page = client.get(response.headers["location"])
+    assert "Not sent" in page.text
+    assert "must be verified in Brevo" in page.text
+
+
+def test_a_blocked_smtp_port_explains_itself(client, monkeypatch):
+    """Free hosting blocks outbound SMTP; a bare errno sends people
+    off checking their password for an hour instead."""
+    def refuse(*args, **kwargs):
+        raise OSError(101, "Network is unreachable")
+
+    monkeypatch.setattr("gymform.notify.smtplib.SMTP", refuse)
+    monkeypatch.setenv("GYM_SMTP_USER", "someone@gmail.com")
+    monkeypatch.setenv("GYM_SMTP_PASSWORD", "app-password")
+    monkeypatch.delenv("GYM_BREVO_API_KEY", raising=False)
+
+    response = client.post("/gym/submit", data=payload(), follow_redirects=False)
+    page = client.get(response.headers["location"])
+    assert "Not sent" in page.text
+    assert "block outbound" in page.text
+    assert "GYM_BREVO_API_KEY" in page.text
+
+
 def test_whatsapp_text_withholds_the_identity_document(client, monkeypatch):
     """WhatsApp travels through a third party and lands in a forwardable chat."""
     from gymform.models import IST, ClientEntry, Submission
