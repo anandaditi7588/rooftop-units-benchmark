@@ -671,3 +671,41 @@ def test_office_email_carries_the_id_proof_attachment(client, monkeypatch):
         if piece.get_filename()
     ]
     assert names == ["pan.pdf"]
+
+
+def test_office_can_fire_a_test_alert_from_the_browser(client, monkeypatch):
+    """The office checks alerts from a phone, not a terminal."""
+    monkeypatch.setenv("GYM_ADMIN_USERNAME", "office")
+    monkeypatch.setenv("GYM_ADMIN_PASSWORD", "secret")
+
+    page = client.get("/gym/admin", auth=("office", "secret"))
+    assert page.status_code == 200
+    assert "Send a test alert" in page.text
+    assert "/gym/admin/test-notification" in page.text
+
+    calls: list[dict] = []
+
+    class Reply:
+        ok = True
+        status_code = 200
+        text = "Message queued."
+
+    monkeypatch.setattr("gymform.notify.requests.get",
+                        lambda url, params=None, **k: (calls.append(params), Reply())[1])
+    monkeypatch.setenv("GYM_CALLMEBOT_APIKEY", "123456")
+
+    response = client.post("/gym/admin/test-notification", auth=("office", "secret"))
+    assert response.status_code == 200
+    results = response.json()["results"]
+    whatsapp = next(r for r in results if r["channel"] == "whatsapp")
+    assert whatsapp["ok"] is True
+    assert calls[0]["phone"] == "+917588610829"
+    assert "Test Trainer" in calls[0]["text"]
+
+
+def test_test_alert_stays_behind_the_office_password(client, monkeypatch):
+    monkeypatch.delenv("GYM_ADMIN_USERNAME", raising=False)
+    monkeypatch.delenv("GYM_ADMIN_PASSWORD", raising=False)
+    monkeypatch.delenv("RTU_AUTH_USERNAME", raising=False)
+    monkeypatch.delenv("RTU_AUTH_PASSWORD", raising=False)
+    assert client.post("/gym/admin/test-notification").status_code == 503
