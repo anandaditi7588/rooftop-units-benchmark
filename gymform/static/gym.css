@@ -411,6 +411,7 @@ input:focus, select:focus, textarea:focus {
 }
 
 .pill-ok { background: var(--accent-soft); color: #0f5c42; }
+.pill-danger { background: var(--danger-soft); color: #8c1d18; }
 .pill-warn { background: var(--warn-soft); color: var(--warn); }
 
 /* ---------- QR / poster ---------- */
@@ -433,3 +434,20 @@ input:focus, select:focus, textarea:focus {
   .card { box-shadow: none; border-color: #999; }
   .poster { padding: 12px; }
 }
+
+/* ---------- office approve / reject ---------- */
+
+.decision-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 14px 0 0;
+}
+
+.decision-note { flex: 1 1 220px; }
+
+.btn-approve { background: var(--accent); color: #fff; }
+.btn-approve:hover { background: #0c7350; }
+.btn-reject { background: #fff; color: var(--danger); border-color: var(--danger); }
+.btn-reject:hover { background: var(--danger-soft); }

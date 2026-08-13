@@ -296,6 +296,39 @@ which only a gateway can set up.
 
 ---
 
+## 4c. Office approval — the actual gate
+
+A registration is **pending** until the office approves it. The office page has
+**Approve** / **Reject** buttons with an optional note; the trainer sees their
+status on their confirmation page and is emailed the moment it changes.
+
+**Approve only once the fee is visible in the society account.** That is the
+whole point of this step: the form cannot see the bank, so it can never know
+whether a trainer paid. The office can. Security should admit approved trainers
+only — which is how the rulebook already reads, since entry is permitted when
+the office has registered the trainer, not when a web page accepted a form.
+
+Decisions append to `approvals.jsonl` and the newest wins, so rejecting and
+later approving (when the fee arrives) works, and the history stays auditable.
+
+### Why payment does not block submission
+
+Blocking Submit on payment sounds stronger but is weaker in practice, for two
+reasons. Without a payment gateway there is nothing to verify against — a
+trainer could type any reference and get through, so the block would be
+theatre. And a hard block loses the registration itself: the trainer's details,
+client list and rule acknowledgements would never reach the society at all,
+which is the part worth keeping even when the fee is late.
+
+Recording everything and gating on approval keeps the record and puts the
+decision with the only party who can actually check.
+
+If you later want payment genuinely enforced before submission, that needs a
+gateway (Razorpay or similar) with webhook verification: about 2% + GST per
+transaction and society KYC.
+
+---
+
 ## 5. The QR code
 
 Open **`https://<your-host>/gym/poster`** and print it (Ctrl/Cmd + P). It is an

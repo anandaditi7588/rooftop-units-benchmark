@@ -19,6 +19,7 @@ DATA_DIR: Path = BASE_DIR / "output" / "gym_form"
 SUBMISSIONS_JSONL: Path = DATA_DIR / "submissions.jsonl"
 SUBMISSIONS_CSV: Path = DATA_DIR / "submissions.csv"
 PAYMENTS_JSONL: Path = DATA_DIR / "payments.jsonl"
+APPROVALS_JSONL: Path = DATA_DIR / "approvals.jsonl"
 ID_PROOF_DIR: Path = DATA_DIR / "id_proofs"
 
 TEMPLATES_DIR: Path = Path(__file__).resolve().parent / "templates"
