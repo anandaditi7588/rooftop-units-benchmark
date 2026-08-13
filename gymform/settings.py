@@ -89,6 +89,14 @@ class GymFormSettings:
     twilio_from: str = field(
         default_factory=lambda: _env("GYM_TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886"))
 
+    # --- WhatsApp: Whapi.Cloud -------------------------------------------
+    # Sends through a WhatsApp account linked by QR code, so it needs no Meta
+    # Business verification. The sandbox tier is free and allows far more than
+    # a society's handful of registrations a month.
+    whapi_token: str = field(default_factory=lambda: _env("GYM_WHAPI_TOKEN"))
+    whapi_base_url: str = field(
+        default_factory=lambda: _env("GYM_WHAPI_BASE_URL", "https://gate.whapi.cloud"))
+
     # --- WhatsApp: CallMeBot (free) --------------------------------------
     # A free relay that messages one pre-authorised number. No account, no
     # card: the recipient WhatsApps the bot once and gets an API key back.
@@ -156,6 +164,8 @@ class GymFormSettings:
             return "twilio"
         if self.meta_phone_number_id and self.meta_access_token:
             return "meta"
+        if self.whapi_token:
+            return "whapi"
         if self.callmebot_apikey:
             return "callmebot"
         return "link"
@@ -166,6 +176,7 @@ class GymFormSettings:
         return {
             "twilio": "Twilio",
             "meta": "WhatsApp Cloud API",
+            "whapi": "Whapi.Cloud",
             "callmebot": "CallMeBot (free)",
             "link": "Manual link",
         }[self.whatsapp_provider]

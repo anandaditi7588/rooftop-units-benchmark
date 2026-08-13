@@ -10,7 +10,9 @@
   <p style="margin:14px 0 0">
     <a class="btn btn-ghost" href="{{ base }}/admin/submissions.csv">Download CSV</a>
     <a class="btn btn-ghost" href="{{ base }}/poster">Printable QR notice</a>
+    <button type="button" class="btn btn-ghost" id="testNotifyBtn">Send a test alert</button>
   </p>
+  <div id="testNotifyResult" class="small" style="margin-top:12px" hidden></div>
 </div>
 
 <div class="card">
@@ -120,4 +122,55 @@
 </div>
 {% endfor %}
 
+{% endblock %}
+
+{% block scripts %}
+<script>
+  /* Fires a dummy registration through the real email and WhatsApp channels
+     and prints what each one said. The equivalent curl exists, but the person
+     checking whether the alerts work is usually holding a phone. */
+  (function () {
+    var button = document.getElementById("testNotifyBtn");
+    var output = document.getElementById("testNotifyResult");
+    if (!button || !output) return;
+
+    button.addEventListener("click", function () {
+      button.disabled = true;
+      button.textContent = "Sending…";
+      output.hidden = false;
+      output.className = "small alert alert-warn";
+      output.textContent = "Sending a test alert…";
+
+      fetch("{{ base }}/admin/test-notification", {
+        method: "POST",
+        credentials: "same-origin"
+      })
+        .then(function (response) {
+          if (!response.ok) throw new Error("HTTP " + response.status);
+          return response.json();
+        })
+        .then(function (data) {
+          var results = data.results || [];
+          var allOk = results.length > 0 && results.every(function (r) { return r.ok; });
+          output.className = "small alert " + (allOk ? "alert-ok" : "alert-warn");
+          output.innerHTML = results.map(function (r) {
+            var who = r.channel === "whatsapp" ? "WhatsApp"
+                    : r.channel === "email_trainer" ? "Email (trainer copy)"
+                    : "Email (office)";
+            return "<div><strong>" + who + ": " + (r.ok ? "sent" : "not sent") +
+                   "</strong><br>" + (r.detail || "") + "</div>";
+          }).join("<hr style='border:0;border-top:1px solid rgba(0,0,0,.1);margin:8px 0'>")
+            || "No channels are configured.";
+        })
+        .catch(function (error) {
+          output.className = "small alert alert-danger";
+          output.textContent = "Could not send the test: " + error.message;
+        })
+        .finally(function () {
+          button.disabled = false;
+          button.textContent = "Send a test alert";
+        });
+    });
+  })();
+</script>
 {% endblock %}

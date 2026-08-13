@@ -576,6 +576,8 @@ def _send_whatsapp(settings: GymFormSettings, message: str) -> DeliveryResult:
         return _send_whatsapp_twilio(settings, number, message, link)
     if provider == "meta":
         return _send_whatsapp_meta(settings, number, message, link)
+    if provider == "whapi":
+        return _send_whatsapp_whapi(settings, number, message, link)
     if provider == "callmebot":
         return _send_whatsapp_callmebot(settings, number, message, link)
 
@@ -617,6 +619,66 @@ def _send_whatsapp_twilio(
     logger.warning("Gym form: Twilio returned %s: %s", response.status_code, detail)
     return DeliveryResult(
         "whatsapp", False, f"Twilio returned HTTP {response.status_code}: {detail}", link=link
+    )
+
+
+def _send_whatsapp_whapi(
+    settings: GymFormSettings, number: str, message: str, link: str
+) -> DeliveryResult:
+    """Send through Whapi.Cloud.
+
+    Messages go out from a WhatsApp account linked to Whapi by QR code, so
+    there is no Meta Business verification and no per-message billing — but
+    that linked account is the dependency: if it is unlinked, logged out, or
+    the phone is offline for long enough, sending stops. The failure is
+    reported rather than swallowed so the office finds out from the
+    confirmation page instead of from silence.
+    """
+    url = settings.whapi_base_url.rstrip("/") + "/messages/text"
+    try:
+        response = requests.post(
+            url,
+            json={"to": number, "body": message},
+            headers={
+                "Authorization": f"Bearer {settings.whapi_token}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+            timeout=settings.request_timeout,
+        )
+    except requests.RequestException as exc:
+        logger.warning("Gym form: Whapi request failed: %s", exc)
+        return DeliveryResult("whatsapp", False, f"Whapi request failed: {exc}", link=link)
+
+    if response.ok:
+        # A 200 does not always mean delivered: the API answers with
+        # {"sent": false, ...} when the linked channel is not ready.
+        try:
+            body = response.json()
+        except ValueError:
+            body = {}
+        if body.get("sent") is False:
+            detail = str(body)[:300]
+            logger.warning("Gym form: Whapi accepted but did not send: %s", detail)
+            return DeliveryResult(
+                "whatsapp", False,
+                f"Whapi did not send the message: {detail}. Check the channel is "
+                "linked and running in the Whapi dashboard.",
+                link=link,
+            )
+        logger.info("Gym form: WhatsApp sent via Whapi to +%s", number)
+        return DeliveryResult("whatsapp", True, f"Sent via Whapi.Cloud to +{number}", link=link)
+
+    detail = response.text[:300]
+    logger.warning("Gym form: Whapi returned %s: %s", response.status_code, detail)
+    hint = ""
+    if response.status_code in (401, 403):
+        hint = " Check GYM_WHAPI_TOKEN — Whapi rejected the token."
+    elif response.status_code == 404:
+        hint = " Check GYM_WHAPI_BASE_URL matches the gate URL shown in your Whapi channel."
+    return DeliveryResult(
+        "whatsapp", False,
+        f"Whapi returned HTTP {response.status_code}: {detail}{hint}", link=link,
     )
 
 
