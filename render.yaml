@@ -1,0 +1,61 @@
+# Render blueprint for the Silicon Bay Society trainer registration form.
+#
+# This deploys the FORM ONLY (gymform/), not the RTU benchmarking tool — the
+# form has no dependency on it, and keeping them apart means this service
+# installs six small packages instead of the benchmarking stack that has
+# previously exhausted the free tier's memory.
+#
+# To use: Render dashboard -> New -> Blueprint -> pick this repository.
+# Creating an existing service from this file does not touch any service you
+# already run from this repo; Render only manages what the blueprint defines.
+#
+# After the first deploy, set the secrets marked `sync: false` below in the
+# Render dashboard (Environment tab). See docs/GYM_FORM.md.
+
+services:
+  - type: web
+    name: silicon-bay-gym-form
+    runtime: python
+    plan: free
+    region: singapore          # closest Render region to Pune
+    buildCommand: pip install -r gymform/requirements.txt
+    startCommand: uvicorn gymform.standalone:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      # --- Who gets notified -------------------------------------------
+      - key: GYM_NOTIFY_EMAIL
+        value: dulange111@gmail.com
+      - key: GYM_NOTIFY_WHATSAPP
+        value: "917588610829"
+
+      # --- Office login for the review pages ---------------------------
+      # The form refuses to show submissions until BOTH of these are set,
+      # because submissions hold trainers' ID numbers and addresses.
+      - key: GYM_ADMIN_USERNAME
+        sync: false
+      - key: GYM_ADMIN_PASSWORD
+        sync: false
+
+      # --- Email delivery ----------------------------------------------
+      # GYM_SMTP_PASSWORD must be a Gmail App Password (16 characters), not
+      # the account password — Google rejects the latter for SMTP.
+      - key: GYM_SMTP_USER
+        sync: false
+      - key: GYM_SMTP_PASSWORD
+        sync: false
+
+      # --- WhatsApp (optional) -----------------------------------------
+      # Leave all of these unset to have the office email carry a one-tap
+      # wa.me link instead of sending automatically — free, but a person
+      # taps it. GYM_CALLMEBOT_APIKEY is the free automatic route; the
+      # Twilio pair is the commercial one. See docs/GYM_FORM.md section 4.
+      - key: GYM_CALLMEBOT_APIKEY
+        sync: false
+      - key: GYM_TWILIO_ACCOUNT_SID
+        sync: false
+      - key: GYM_TWILIO_AUTH_TOKEN
+        sync: false
+
+# The URL encoded in the QR code needs no configuration: Render sets
+# RENDER_EXTERNAL_URL on every web service, and the form reads it. Set
+# GYM_PUBLIC_URL by hand only if you put a custom domain in front.

@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Trainer registrations — {{ society_name }}{% endblock %}
+{% block header_title %}Trainer registrations (office){% endblock %}
+
+{% block content %}
+
+<div class="card card-lead">
+  <h1>{{ records|length }} registration{{ 's' if records|length != 1 else '' }}</h1>
+  <p class="lead">Every trainer registration received through the online form, newest first.</p>
+  <p style="margin:14px 0 0">
+    <a class="btn btn-ghost" href="{{ base }}/admin/submissions.csv">Download CSV</a>
+    <a class="btn btn-ghost" href="{{ base }}/poster">Printable QR notice</a>
+  </p>
+</div>
+
+<div class="card">
+  <h2>Delivery settings</h2>
+  <table class="data-table">
+    <tr><th>Notification email</th><td>{{ settings.notify_email }}</td></tr>
+    <tr><th>Notification WhatsApp</th><td>+{{ settings.notify_whatsapp }}</td></tr>
+    <tr>
+      <th>Email sending</th>
+      <td>
+        {% if settings.email_configured %}
+        <span class="pill pill-ok">Configured</span> via {{ settings.smtp_host }}
+        {% else %}
+        <span class="pill pill-warn">Not configured</span>
+        <div class="small muted">Set GYM_SMTP_USER and GYM_SMTP_PASSWORD to switch email on.</div>
+        {% endif %}
+      </td>
+    </tr>
+    <tr>
+      <th>WhatsApp sending</th>
+      <td>
+        {% if settings.whatsapp_provider == 'link' %}
+        <span class="pill pill-warn">Manual link</span>
+        <div class="small muted">
+          No WhatsApp API configured — the office email carries a one-tap wa.me link instead.
+          Configure Twilio or the WhatsApp Cloud API for automatic delivery.
+        </div>
+        {% else %}
+        <span class="pill pill-ok">{{ settings.whatsapp_provider_label }}</span>
+        {% endif %}
+      </td>
+    </tr>
+  </table>
+</div>
+
+{% for record in records %}
+<div class="card">
+  <div class="section-head" style="justify-content:space-between">
+    <h2>{{ record.trainer_name }}</h2>
+    <span class="small muted">{{ record.reference }}</span>
+  </div>
+  <p class="small muted" style="margin-top:0">
+    Submitted {{ record.submitted_at }} ·
+    {{ record.client_count }} client{{ 's' if record.client_count != 1 else '' }} ·
+    ₹{{ "{:,}".format(record.monthly_fee_inr) }} per month
+  </p>
+
+  <table class="data-table">
+    <tr><th>Mobile</th><td>+91 {{ record.mobile }}</td></tr>
+    <tr><th>WhatsApp</th><td>+91 {{ record.whatsapp }}</td></tr>
+    <tr><th>Email</th><td>{{ record.email }}</td></tr>
+    <tr><th>ID proof</th>
+      <td>{{ record.id_type }} — {{ record.id_number }}
+        {% if record.id_proof_filename %}
+        · <a href="{{ base }}/admin/id-proof/{{ record.reference }}">{{ record.id_proof_filename }}</a>
+        {% endif %}
+      </td>
+    </tr>
+    <tr><th>Address</th><td>{{ record.address }}</td></tr>
+    {% if record.emergency_contact_name or record.emergency_contact_mobile %}
+    <tr><th>Emergency contact</th><td>{{ record.emergency_contact_name }} +91 {{ record.emergency_contact_mobile }}</td></tr>
+    {% endif %}
+    {% if record.outside_hours_informed %}
+    <tr><th>Outside gym hours</th>
+      <td><span class="pill pill-warn">Declared</span> {{ record.outside_hours_note }}</td></tr>
+    {% endif %}
+    {% if record.committee_approval_reference %}
+    <tr><th>Committee approval</th><td>{{ record.committee_approval_reference }}</td></tr>
+    {% endif %}
+    <tr><th>Signed</th><td>{{ record.declaration_signature }}{% if record.declaration_place %}, {{ record.declaration_place }}{% endif %}</td></tr>
+  </table>
+
+  <div class="table-scroll">
+    <table class="data-table">
+      <tr><th>#</th><th>Client name</th><th>Flat</th><th>Training slot</th></tr>
+      {% for client in record.clients %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>{{ client.name }}</td>
+        <td>{{ client.flat_number }}</td>
+        <td>{{ client.slot_label }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="card">
+  <p class="muted">
+    No registrations yet. Put the <a href="{{ base }}/poster">printable QR notice</a> up at
+    the gym door so trainers can scan it.
+  </p>
+</div>
+{% endfor %}
+
+{% endblock %}

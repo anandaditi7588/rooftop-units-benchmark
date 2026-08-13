@@ -31,6 +31,13 @@ scikit-learn>=1.5.2
 # --- PDF report export ----------------------------------------------------------
 reportlab>=4.2.2
 
+# --- Trainer registration form (gymform/) ---------------------------------------
+# QR code for the printable "scan to register" notice. Pulls in Pillow, which
+# is what actually renders the PNG. Everything else the form needs (fastapi,
+# jinja2, python-multipart, requests) is already listed above; email goes out
+# through the standard library's smtplib.
+qrcode[pil]>=7.4.2
+
 # NOTE: version floors (>=) are used instead of hard pins because this project
 # targets whatever Python your machine has; on very new Python releases some
 # exact pins above may predate an available prebuilt wheel (this was verified
@@ -64,3 +71,7 @@ reportlab>=4.2.2
 # majority of real-world spec sheets without these):
 #   camelot-py[cv]==0.11.0
 #   tabula-py==2.9.3
+
+# Running the test suite (pytest tests/test_gym_form.py) additionally needs:
+#   pytest>=8.0.0
+#   httpx>=0.27.0        # required by fastapi's TestClient

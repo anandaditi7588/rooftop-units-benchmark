@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Scan to register — {{ society_name }} gym{% endblock %}
+{% block header_title %}Printable notice{% endblock %}
+
+{% block content %}
+
+<div class="no-print alert alert-ok">
+  Print this page (Ctrl/Cmd + P) and put it up at the gym door and the security desk.
+  Trainers scan the code with their phone camera and the form opens straight away.
+</div>
+
+<div class="card poster">
+  <div class="eyebrow" style="color:#5b6b80">{{ society_name }} · {{ society_address }}</div>
+  <h1>Personal Trainers<br>Register Here</h1>
+  <p class="lead" style="max-width:34em;margin:0 auto">
+    Training a resident in the society gym? You must register with the society office
+    first. Scan this code, fill the form, and you are done.
+  </p>
+
+  <p style="margin:26px 0 10px">
+    <img src="{{ base }}/qr.png?size=12" alt="QR code linking to the trainer registration form"
+         style="width:300px;max-width:80vw;height:auto">
+  </p>
+  <p class="url">{{ form_url }}</p>
+
+  <div class="poster-steps">
+    <ol>
+      <li>Open your phone camera and point it at the code.</li>
+      <li>Fill in your details, ID proof and client list.</li>
+      <li>Read and accept the society gym rules.</li>
+      <li>Submit — the society office is notified at once.</li>
+    </ol>
+  </div>
+
+  <p class="small muted" style="max-width:36em;margin:0 auto">
+    Gym hours {{ operating_hours_text }} · Maximum {{ max_clients_per_session }} clients per
+    trainer at a time · Monthly amenity usage fee applies
+    ({% for slab in fee_slabs %}{{ slab.label }}: INR {{ "{:,}".format(slab.monthly_fee_inr) }}{{ "; " if not loop.last }}{% endfor %})
+  </p>
+</div>
+
+<p class="no-print" style="text-align:center;margin:20px 0 0">
+  <a class="btn btn-ghost" href="{{ base }}/qr.png?size=16" download="silicon-bay-gym-qr.png">
+    Download the QR code image
+  </a>
+</p>
+
+{% endblock %}
