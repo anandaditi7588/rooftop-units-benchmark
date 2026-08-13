@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Registration submitted — {{ society_name }}{% endblock %}
+{% block header_title %}Registration submitted{% endblock %}
+
+{% block content %}
+
+<div class="card card-lead">
+  <h1>Thank you, {{ record.trainer_name }}.</h1>
+  <p class="lead">
+    Your registration has been recorded and sent to the {{ society_name }} office.
+    Please wait for the office to confirm your approval before starting any session.
+  </p>
+
+  <table class="data-table" style="margin-top:14px">
+    <tr><th>Reference</th><td><strong>{{ record.reference }}</strong></td></tr>
+    <tr><th>Clients listed</th><td>{{ record.client_count }}</td></tr>
+    <tr><th>Monthly amenity fee</th><td>₹{{ "{:,}".format(record.monthly_fee_inr) }}</td></tr>
+  </table>
+  <p class="hint" style="margin-top:12px">
+    Keep this reference — quote it when you follow up with the society office.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Notification status</h2>
+  <p class="hint">Who has been told about your registration.</p>
+
+  {% if deliveries %}
+  <table class="data-table">
+    {% for delivery in deliveries %}
+    <tr>
+      <th>
+        {% if delivery.channel == 'email' %}Society office (email)
+        {% elif delivery.channel == 'email_trainer' %}Your copy (email)
+        {% else %}Society office (WhatsApp){% endif %}
+      </th>
+      <td>
+        {% if delivery.ok %}
+          <span class="pill pill-ok">Sent</span>
+        {% else %}
+          <span class="pill pill-warn">Not sent</span>
+        {% endif %}
+        <div class="small muted">{{ delivery.detail }}</div>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted small">No delivery information available for this reference.</p>
+  {% endif %}
+
+  {% if whatsapp_link %}
+  <p class="hint" style="margin-top:14px">
+    Automatic WhatsApp delivery is not switched on yet. Tap below to send the same
+    summary to the society office from your own WhatsApp.
+  </p>
+  <a class="btn btn-whatsapp btn-block" href="{{ whatsapp_link }}" target="_blank" rel="noopener">
+    Send this registration on WhatsApp
+  </a>
+  {% endif %}
+
+  <p class="small muted" style="margin-top:16px;margin-bottom:0">
+    Your registration is saved on the society server whether or not these messages
+    were delivered. If nothing arrives, contact the office quoting
+    {{ record.reference }}{% if office_email %} or write to {{ office_email }}{% endif %}.
+  </p>
+</div>
+
+<div class="card">
+  <h2>What you submitted</h2>
+  <table class="data-table">
+    <tr><th>Name</th><td>{{ record.trainer_name }}</td></tr>
+    <tr><th>Mobile</th><td>+91 {{ record.mobile }}</td></tr>
+    <tr><th>WhatsApp</th><td>+91 {{ record.whatsapp }}</td></tr>
+    <tr><th>Email</th><td>{{ record.email }}</td></tr>
+    <tr><th>ID proof</th><td>{{ record.id_type }} — {{ record.id_number }}
+      {%- if record.id_proof_filename %} <span class="small muted">({{ record.id_proof_filename }})</span>{% endif %}</td></tr>
+    <tr><th>Address</th><td>{{ record.address }}</td></tr>
+  </table>
+
+  <h3>Client list</h3>
+  <div class="table-scroll">
+    <table class="data-table">
+      <tr><th>#</th><th>Client name</th><th>Flat</th><th>Training slot</th></tr>
+      {% for client in record.clients %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>{{ client.name }}</td>
+        <td>{{ client.flat_number }}</td>
+        <td>{{ client.slot_label }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+
+  <h3>Reminders</h3>
+  <ul class="small muted">
+    <li>Carry your {{ record.id_type }} whenever you are inside the society premises.</li>
+    <li>Sign the security register with your in-time and out-time on every visit.</li>
+    <li>Gym hours are {{ operating_hours_text }}.</li>
+    <li>You may train at most {{ max_clients_per_session }} clients at a time.</li>
+    <li>Use only the gym — no other society amenity is available to trainers.</li>
+  </ul>
+</div>
+
+<p style="text-align:center;margin:24px 0 0">
+  <a class="btn btn-ghost" href="{{ base }}/">Register another trainer</a>
+</p>
+
+{% endblock %}

@@ -60,6 +60,15 @@ config/
   competitors.json            Add a new competitor here — no code changes
   parameter_synonyms.json     Domain-knowledge synonym groups
   parameter_rules.json        higher/lower-is-better directionality
+gymform/                      Silicon Bay trainer gym-registration form (see §10)
+  rules.py                    The society rulebook, fee slabs & gym hours as data
+  models.py                   Form model + server-side validation
+  web.py                      Routes, mounted at /gym
+  notify.py                   Email + WhatsApp notifications
+  storage.py                  Submissions -> JSONL/CSV on disk
+  templates/ static/          Its own pages and assets (no shared styling)
+tests/
+  test_gym_form.py            Tests for the registration form
 Physical_Data.xlsx (project root)   Master benchmark parameter template (Column B)
 data/                         Reserved for any additional data assets you add
 uploads/                      User-uploaded parameter sheets
@@ -299,3 +308,40 @@ see `core/auth.py`. Anyone reaching the URL will get a browser login prompt.
   document lists via JavaScript (Lennox, Rheem — see section 4) behave the
   same in the cloud as they do locally; the curated PDFs already in the repo
   are what make Carrier/Johnson Controls/Daikin/AAON reliable out of the box.
+
+---
+
+## 10. Silicon Bay Society — personal trainer gym registration form
+
+This repository also hosts an unrelated second application: an online
+registration form for personal trainers using the Silicon Bay Society gym,
+built from the society's *"Society Gym Rules for Personal Trainers"* document.
+It shares this server but shares no code with the benchmarking tool, and can be
+deployed on its own (`uvicorn gymform.standalone:app`).
+
+A trainer scans a QR code at the gym door, the form opens on their phone, they
+fill in their details, ID proof, client list and acknowledge all 15 society
+rules — and the society office is notified by email and WhatsApp the moment
+they submit.
+
+| | |
+|---|---|
+| Form | `https://<your-host>/gym/` |
+| Printable QR notice | `https://<your-host>/gym/poster` |
+| Registrations received (office only) | `https://<your-host>/gym/admin` |
+
+Out of the box the form validates and stores every submission with no
+configuration at all. To switch on email, add `GYM_SMTP_USER` and
+`GYM_SMTP_PASSWORD` (a Gmail **App Password**, not the account password); to
+switch on automatic WhatsApp, add Twilio or WhatsApp Cloud API credentials.
+Without WhatsApp credentials the notification email carries a one-tap link that
+sends the same summary instead.
+
+**Set `GYM_ADMIN_USERNAME` and `GYM_ADMIN_PASSWORD` before going live** —
+submissions contain trainers' phone numbers, addresses and government ID
+numbers. Until those are set the review pages return 503 rather than exposing
+that data.
+
+Full setup guide, including the QR code, storage and every environment
+variable: **[docs/GYM_FORM.md](docs/GYM_FORM.md)**. Start from
+[`.env.example`](.env.example).

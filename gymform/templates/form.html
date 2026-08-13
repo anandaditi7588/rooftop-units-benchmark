@@ -1,0 +1,397 @@
+{% extends "base.html" %}
+{% block title %}{{ society_name }} — Personal Trainer Gym Registration{% endblock %}
+
+{% macro day_chips(row_index, selected) -%}
+<div class="day-chips">
+  {% for code, label in days %}
+  <label class="day-chip">
+    <input type="checkbox" name="client_days_{{ row_index }}" value="{{ code }}"
+           {% if code in selected %}checked{% endif %}>
+    <span>{{ label }}</span>
+  </label>
+  {% endfor %}
+</div>
+{%- endmacro %}
+
+{% block content %}
+
+<div class="card card-lead">
+  <h1>Personal Trainer Registration</h1>
+  <p class="lead">
+    Every personal trainer must register with the {{ society_name }} office before
+    training any resident in the society gym. Fill this form once — the office is
+    notified immediately and will confirm your approval.
+  </p>
+  <p class="small muted" style="margin-bottom:0">
+    Gym hours are <strong>{{ operating_hours_text }}</strong>.
+    A trainer may train at most <strong>{{ max_clients_per_session }} clients at a time</strong>.
+    Fields marked <span class="req">*</span> are required.
+  </p>
+</div>
+
+{% if errors %}
+<div class="alert alert-danger" id="errorSummary" role="alert">
+  <strong>Please fix {{ errors|length }} item{{ 's' if errors|length != 1 else '' }} below.</strong>
+  <ul style="margin:8px 0 0;padding-left:20px">
+    {% for message in errors.values() %}<li>{{ message }}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<form method="post" action="{{ base }}/submit" enctype="multipart/form-data" id="trainerForm" novalidate>
+
+  <!-- Bots fill hidden fields; people never see this one. -->
+  <div style="position:absolute;left:-9999px" aria-hidden="true">
+    <label>Website<input type="text" name="website" tabindex="-1" autocomplete="off"></label>
+  </div>
+
+  <!-- ============ 1. Trainer details ============ -->
+  <section class="card">
+    <div class="section-head">
+      <span class="step">1</span>
+      <h2>Your details</h2>
+    </div>
+    <p class="hint">Rule 1 — registration &amp; approval. Carry this ID whenever you are inside the society premises.</p>
+
+    <div class="field {% if errors.trainer_name %}has-error{% endif %}">
+      <label for="trainer_name">Full name <span class="req">*</span></label>
+      <input type="text" id="trainer_name" name="trainer_name" autocomplete="name"
+             value="{{ values.trainer_name }}" required>
+      {% if errors.trainer_name %}<div class="error-text">{{ errors.trainer_name }}</div>{% endif %}
+    </div>
+
+    <div class="grid-2">
+      <div class="field {% if errors.mobile %}has-error{% endif %}">
+        <label for="mobile">Mobile number <span class="req">*</span></label>
+        <div class="with-prefix">
+          <span class="prefix">+91</span>
+          <input type="tel" id="mobile" name="mobile" inputmode="numeric" maxlength="14"
+                 autocomplete="tel-national" value="{{ values.mobile }}" required>
+        </div>
+        {% if errors.mobile %}<div class="error-text">{{ errors.mobile }}</div>{% endif %}
+      </div>
+
+      <div class="field {% if errors.whatsapp %}has-error{% endif %}">
+        <label for="whatsapp">WhatsApp number</label>
+        <div class="with-prefix">
+          <span class="prefix">+91</span>
+          <input type="tel" id="whatsapp" name="whatsapp" inputmode="numeric" maxlength="14"
+                 value="{{ values.whatsapp }}" placeholder="Same as mobile">
+        </div>
+        {% if errors.whatsapp %}<div class="error-text">{{ errors.whatsapp }}</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="field {% if errors.email %}has-error{% endif %}">
+      <label for="email">Email address <span class="req">*</span></label>
+      <input type="email" id="email" name="email" autocomplete="email"
+             value="{{ values.email }}" required>
+      <div class="hint" style="margin-bottom:0">A copy of this registration is sent to you here.</div>
+      {% if errors.email %}<div class="error-text">{{ errors.email }}</div>{% endif %}
+    </div>
+
+    <div class="grid-2">
+      <div class="field {% if errors.id_type %}has-error{% endif %}">
+        <label for="id_type">Government ID proof <span class="req">*</span></label>
+        <select id="id_type" name="id_type" required>
+          <option value="">Select ID type…</option>
+          {% for id_type in id_proof_types %}
+          <option value="{{ id_type }}" {% if values.id_type == id_type %}selected{% endif %}>{{ id_type }}</option>
+          {% endfor %}
+        </select>
+        {% if errors.id_type %}<div class="error-text">{{ errors.id_type }}</div>{% endif %}
+      </div>
+
+      <div class="field {% if errors.id_number %}has-error{% endif %}">
+        <label for="id_number">ID number <span class="req">*</span></label>
+        <input type="text" id="id_number" name="id_number" autocapitalize="characters"
+               value="{{ values.id_number }}" required>
+        {% if errors.id_number %}<div class="error-text">{{ errors.id_number }}</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="field {% if errors.id_proof %}has-error{% endif %}">
+      <label for="id_proof">Upload ID proof (photo or PDF)</label>
+      <input type="file" id="id_proof" name="id_proof"
+             accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,image/*,application/pdf">
+      <div class="hint" style="margin-bottom:0">Optional, but it speeds up approval. Max 5 MB.</div>
+      {% if errors.id_proof %}<div class="error-text">{{ errors.id_proof }}</div>{% endif %}
+    </div>
+
+    <div class="field {% if errors.address %}has-error{% endif %}">
+      <label for="address">Residential address <span class="req">*</span></label>
+      <textarea id="address" name="address" required>{{ values.address }}</textarea>
+      {% if errors.address %}<div class="error-text">{{ errors.address }}</div>{% endif %}
+    </div>
+
+    <div class="grid-2">
+      <div class="field">
+        <label for="emergency_contact_name">Emergency contact name</label>
+        <input type="text" id="emergency_contact_name" name="emergency_contact_name"
+               value="{{ values.emergency_contact_name }}">
+      </div>
+      <div class="field {% if errors.emergency_contact_mobile %}has-error{% endif %}">
+        <label for="emergency_contact_mobile">Emergency contact number</label>
+        <div class="with-prefix">
+          <span class="prefix">+91</span>
+          <input type="tel" id="emergency_contact_mobile" name="emergency_contact_mobile"
+                 inputmode="numeric" maxlength="14" value="{{ values.emergency_contact_mobile }}">
+        </div>
+        {% if errors.emergency_contact_mobile %}<div class="error-text">{{ errors.emergency_contact_mobile }}</div>{% endif %}
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 2. Client list ============ -->
+  <section class="card">
+    <div class="section-head">
+      <span class="step">2</span>
+      <h2>Your client list</h2>
+    </div>
+    <p class="hint">
+      Rule 1 — list every resident you train in {{ society_name }}. All trainees must be
+      residents (rule 4). Your monthly amenity usage fee is calculated from this list.
+    </p>
+
+    {% if errors.clients %}<div class="alert alert-danger">{{ errors.clients }}</div>{% endif %}
+
+    <div id="clientRows">
+      {% for client in values.clients %}
+      <div class="client-row" data-row>
+        <div class="client-row-head">
+          <span class="client-row-title">Client <span data-row-number>{{ loop.index }}</span></span>
+          <button type="button" class="btn-link" data-remove-row>Remove</button>
+        </div>
+
+        <div class="grid-2">
+          <div class="field">
+            <label>Client name <span class="req">*</span></label>
+            <input type="text" name="client_name" value="{{ client.name }}">
+          </div>
+          <div class="field">
+            <label>Flat number <span class="req">*</span></label>
+            <input type="text" name="client_flat" value="{{ client.flat_number }}" placeholder="e.g. B-1204">
+          </div>
+        </div>
+
+        <div class="field">
+          <span class="field-label">Training days <span class="req">*</span></span>
+          {{ day_chips(loop.index0, client.days) }}
+        </div>
+
+        <div class="grid-2">
+          <div class="field" style="margin-bottom:0">
+            <label>Slot start <span class="req">*</span></label>
+            <input type="time" name="client_start" value="{{ client.start_time }}" data-time>
+          </div>
+          <div class="field" style="margin-bottom:0">
+            <label>Slot end <span class="req">*</span></label>
+            <input type="time" name="client_end" value="{{ client.end_time }}" data-time>
+          </div>
+        </div>
+        <div class="error-text" data-row-warning hidden></div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <button type="button" class="btn btn-ghost" id="addClientBtn">+ Add another client</button>
+
+    <div class="fee-box">
+      <div>
+        <div class="small">Clients listed</div>
+        <div class="fee-amount" id="clientCount">{{ values.clients|length }}</div>
+      </div>
+      <div>
+        <div class="small">Monthly amenity usage fee</div>
+        <div class="fee-amount">₹<span id="feeAmount">0</span></div>
+      </div>
+    </div>
+
+    <table class="fee-table" id="feeTable">
+      <tr><th>Number of clients</th><th>Fee per month</th></tr>
+      {% for slab in fee_slabs %}
+      <tr data-min="{{ slab.min_clients }}" data-max="{{ slab.max_clients if slab.max_clients else 9999 }}">
+        <td>{{ slab.label }}</td>
+        <td>INR {{ "{:,}".format(slab.monthly_fee_inr) }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </section>
+
+  <!-- ============ 3. Timings ============ -->
+  <section class="card">
+    <div class="section-head">
+      <span class="step">3</span>
+      <h2>Timings &amp; approvals</h2>
+    </div>
+    <p class="hint">
+      Rule 2 — the gym operates {{ operating_hours_text }}. Sessions cannot start before
+      opening time or continue after closing time.
+    </p>
+
+    <div id="outsideHoursBlock" {% if not values.outside_hours_informed and not errors.outside_hours_informed %}hidden{% endif %}>
+      <div class="alert alert-warn" id="outsideHoursNotice">
+        One or more of your slots falls outside the gym's operating hours.
+        You must inform the society office <em>and</em> the security team before training.
+      </div>
+      <div class="field {% if errors.outside_hours_informed %}has-error{% endif %}">
+        <label class="check">
+          <input type="checkbox" name="outside_hours_informed" value="1"
+                 {% if values.outside_hours_informed %}checked{% endif %}>
+          <span>I have informed the society office and the security team about the slot outside gym hours.</span>
+        </label>
+        {% if errors.outside_hours_informed %}<div class="error-text">{{ errors.outside_hours_informed }}</div>{% endif %}
+      </div>
+      <div class="field">
+        <label for="outside_hours_note">Details of the out-of-hours slot</label>
+        <input type="text" id="outside_hours_note" name="outside_hours_note"
+               value="{{ values.outside_hours_note }}"
+               placeholder="Who did you inform, and when?">
+      </div>
+    </div>
+
+    <div class="field {% if errors.committee_approval_reference %}has-error{% endif %}" style="margin-bottom:0">
+      <label for="committee_approval_reference">Society committee approval reference</label>
+      <input type="text" id="committee_approval_reference" name="committee_approval_reference"
+             value="{{ values.committee_approval_reference }}"
+             placeholder="Only if you have written approval to exceed {{ max_clients_per_session }} clients at a time">
+      <div class="hint" style="margin-bottom:0">
+        Rules 4 and 14 — leave this blank unless the committee has approved you in writing
+        for more than {{ max_clients_per_session }} clients in one session.
+      </div>
+      {% if errors.committee_approval_reference %}<div class="error-text">{{ errors.committee_approval_reference }}</div>{% endif %}
+    </div>
+    <div class="alert alert-warn" id="concurrencyWarning" hidden style="margin:14px 0 0"></div>
+  </section>
+
+  <!-- ============ 4. Rules ============ -->
+  <section class="card">
+    <div class="section-head">
+      <span class="step">4</span>
+      <h2>Society gym rules</h2>
+    </div>
+    <p class="hint">
+      Read each rule and tick to accept. All {{ rules|length }} acknowledgements are required.
+    </p>
+
+    {% if errors.acknowledgements %}<div class="alert alert-danger">{{ errors.acknowledgements }}</div>{% endif %}
+
+    {% for rule in rules %}
+    <div class="rule">
+      <div class="rule-head">
+        <span class="rule-number">{{ rule.number }}</span>
+        <span class="rule-title">{{ rule.title }}</span>
+      </div>
+      <div class="rule-body">
+        {% for paragraph in rule.paragraphs %}<p>{{ paragraph }}</p>{% endfor %}
+        {% if rule.bullets %}
+        <ul>{% for bullet in rule.bullets %}<li>{{ bullet }}</li>{% endfor %}</ul>
+        {% endif %}
+      </div>
+      <div class="rule-ack">
+        <label class="check">
+          <input type="checkbox" name="ack_{{ rule.key }}" value="1" data-ack
+                 {% if values.acknowledgements.get(rule.key) %}checked{% endif %}>
+          <span>{{ rule.acknowledgement }}</span>
+        </label>
+      </div>
+    </div>
+    {% endfor %}
+
+    <p class="small muted" id="ackProgress"></p>
+  </section>
+
+  <!-- ============ 5. Declaration ============ -->
+  <section class="card">
+    <div class="section-head">
+      <span class="step">5</span>
+      <h2>Declaration</h2>
+    </div>
+
+    <div class="field {% if errors.declaration_agree %}has-error{% endif %}">
+      <label class="check">
+        <input type="checkbox" name="declaration_agree" value="1"
+               {% if values.declaration_agree %}checked{% endif %}>
+        <span>{{ declaration }}</span>
+      </label>
+      {% if errors.declaration_agree %}<div class="error-text">{{ errors.declaration_agree }}</div>{% endif %}
+    </div>
+
+    <div class="grid-2">
+      <div class="field {% if errors.declaration_signature %}has-error{% endif %}">
+        <label for="declaration_signature">Signature — type your full name <span class="req">*</span></label>
+        <input type="text" id="declaration_signature" name="declaration_signature"
+               value="{{ values.declaration_signature }}" required>
+        {% if errors.declaration_signature %}<div class="error-text">{{ errors.declaration_signature }}</div>{% endif %}
+      </div>
+      <div class="field">
+        <label for="declaration_place">Place</label>
+        <input type="text" id="declaration_place" name="declaration_place"
+               value="{{ values.declaration_place }}" placeholder="Pune">
+      </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary btn-block btn-lg" id="submitBtn">
+      Submit registration
+    </button>
+    <p class="small muted" style="text-align:center;margin:12px 0 0">
+      The society office is notified by email and WhatsApp as soon as you submit.
+    </p>
+  </section>
+</form>
+
+<template id="clientRowTemplate">
+  <div class="client-row" data-row>
+    <div class="client-row-head">
+      <span class="client-row-title">Client <span data-row-number>1</span></span>
+      <button type="button" class="btn-link" data-remove-row>Remove</button>
+    </div>
+    <div class="grid-2">
+      <div class="field">
+        <label>Client name <span class="req">*</span></label>
+        <input type="text" name="client_name" value="">
+      </div>
+      <div class="field">
+        <label>Flat number <span class="req">*</span></label>
+        <input type="text" name="client_flat" value="" placeholder="e.g. B-1204">
+      </div>
+    </div>
+    <div class="field">
+      <span class="field-label">Training days <span class="req">*</span></span>
+      {{ day_chips('__INDEX__', []) }}
+    </div>
+    <div class="grid-2">
+      <div class="field" style="margin-bottom:0">
+        <label>Slot start <span class="req">*</span></label>
+        <input type="time" name="client_start" data-time>
+      </div>
+      <div class="field" style="margin-bottom:0">
+        <label>Slot end <span class="req">*</span></label>
+        <input type="time" name="client_end" data-time>
+      </div>
+    </div>
+    <div class="error-text" data-row-warning hidden></div>
+  </div>
+</template>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  window.GYM_FORM_CONFIG = {
+    feeSlabs: [
+      {% for slab in fee_slabs %}
+      { min: {{ slab.min_clients }}, max: {{ slab.max_clients if slab.max_clients else 'null' }}, fee: {{ slab.monthly_fee_inr }} }{{ "," if not loop.last }}
+      {% endfor %}
+    ],
+    operatingWindows: [
+      {% for window in operating_windows %}
+      { start: "{{ window.start }}", end: "{{ window.end }}" }{{ "," if not loop.last }}
+      {% endfor %}
+    ],
+    operatingHoursText: {{ operating_hours_text|tojson }},
+    maxClientsPerSession: {{ max_clients_per_session }},
+    ruleCount: {{ rules|length }}
+  };
+</script>
+<script src="{{ base }}/static/gym.js"></script>
+{% endblock %}

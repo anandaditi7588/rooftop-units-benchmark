@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}{{ document_title }} — {{ society_name }}{% endblock %}
+{% block header_title %}{{ document_title }}{% endblock %}
+
+{% block content %}
+
+<div class="card card-lead">
+  <h1>{{ document_title }}</h1>
+  <p class="lead">
+    The complete rulebook every personal trainer accepts when registering to train
+    residents in the {{ society_name }} gym.
+  </p>
+  <p style="margin:14px 0 0">
+    <a class="btn btn-primary" href="{{ base }}/">Go to the registration form</a>
+  </p>
+</div>
+
+<div class="card">
+  <h2>Amenity usage fees</h2>
+  <p class="hint">The personal trainer pays a monthly fee for using the society gym.</p>
+  <table class="fee-table">
+    <tr><th>Number of clients</th><th>Fee per month</th></tr>
+    {% for slab in fee_slabs %}
+    <tr><td>{{ slab.label }}</td><td>INR {{ "{:,}".format(slab.monthly_fee_inr) }}</td></tr>
+    {% endfor %}
+  </table>
+
+  <h3>Gym timings</h3>
+  <p class="small muted">
+    The society gym operates {{ operating_hours_text }}. If a client prefers a slot outside
+    these hours, the trainer must inform the society office and the security team.
+  </p>
+</div>
+
+<div class="card">
+  {% for rule in rules %}
+  <div class="rule">
+    <div class="rule-head">
+      <span class="rule-number">{{ rule.number }}</span>
+      <span class="rule-title">{{ rule.title }}</span>
+    </div>
+    <div class="rule-body">
+      {% for paragraph in rule.paragraphs %}<p>{{ paragraph }}</p>{% endfor %}
+      {% if rule.bullets %}
+      <ul>{% for bullet in rule.bullets %}<li>{{ bullet }}</li>{% endfor %}</ul>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<p style="text-align:center;margin:24px 0 0">
+  <a class="btn btn-primary btn-lg" href="{{ base }}/">Register as a personal trainer</a>
+</p>
+
+{% endblock %}
