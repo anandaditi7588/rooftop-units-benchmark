@@ -208,6 +208,14 @@ input:focus, select:focus, textarea:focus {
   margin-top: 5px;
 }
 
+/* An out-of-hours slot that has been approved: worth flagging, not an error. */
+.row-note-ok {
+  color: var(--warn);
+  font-size: 13px;
+  font-weight: 500;
+  margin-top: 5px;
+}
+
 .field.has-error input,
 .field.has-error select,
 .field.has-error textarea { border-color: var(--danger); }

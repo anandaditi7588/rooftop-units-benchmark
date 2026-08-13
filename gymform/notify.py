@@ -102,9 +102,13 @@ def build_summary_text(submission: Submission) -> str:
         lines += [
             "",
             "NOTE: one or more slots fall outside gym hours "
-            f"({_operating_hours_text()}). The trainer has confirmed the office "
-            "and security team were informed.",
+            f"({_operating_hours_text()}). The trainer has confirmed society "
+            "approval for it.",
         ]
+        if submission.outside_hours_approved_by:
+            lines.append(f"Approval taken from: {submission.outside_hours_approved_by}")
+        if submission.outside_hours_approval_mode:
+            lines.append(f"How it was taken: {submission.outside_hours_approval_mode}")
         if submission.outside_hours_note:
             lines.append(f"Trainer's note: {submission.outside_hours_note}")
     if submission.committee_approval_reference:
@@ -155,7 +159,8 @@ def build_whatsapp_text(submission: Submission) -> str:
         f"*Monthly amenity fee:* ₹{submission.monthly_fee:,}",
     ]
     if submission.has_outside_hours_slot:
-        parts.append("⚠️ Has a slot outside gym hours (office & security informed).")
+        approval = submission.outside_hours_approved_by or "not stated"
+        parts.append(f"⚠️ Has a slot outside gym hours — approved by {approval}.")
     if submission.committee_approval_reference:
         parts.append(f"⚠️ Committee approval quoted: {submission.committee_approval_reference}")
     parts.append(f"\nAll {len(RULES)} rules acknowledged on {submission.submitted_at_label}.")
@@ -194,14 +199,18 @@ def build_summary_html(submission: Submission, whatsapp_link: str = "") -> str:
 
     warnings = ""
     if submission.has_outside_hours_slot:
-        note = (
-            f'<br><em>Trainer\'s note: {_html_escape(submission.outside_hours_note)}</em>'
-            if submission.outside_hours_note else ""
-        )
+        detail = ""
+        if submission.outside_hours_approved_by:
+            detail += ('<br>Approval taken from <strong>'
+                       f'{_html_escape(submission.outside_hours_approved_by)}</strong>')
+            if submission.outside_hours_approval_mode:
+                detail += f' ({_html_escape(submission.outside_hours_approval_mode)})'
+        if submission.outside_hours_note:
+            detail += f'<br><em>{_html_escape(submission.outside_hours_note)}</em>'
         warnings += (
             '<p style="margin:12px 0;padding:12px 14px;background:#fff6e5;border-left:4px solid #e0a800;border-radius:6px">'
             f'<strong>Outside gym hours.</strong> One or more slots fall outside {_operating_hours_text()}. '
-            f'The trainer confirmed the office and security team were informed.{note}</p>'
+            f'The trainer has declared society approval for it.{detail}</p>'
         )
     if submission.committee_approval_reference:
         warnings += (

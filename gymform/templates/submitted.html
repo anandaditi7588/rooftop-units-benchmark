@@ -76,6 +76,11 @@
     <tr><th>ID proof</th><td>{{ record.id_type }} — {{ record.id_number }}
       {%- if record.id_proof_filename %} <span class="small muted">({{ record.id_proof_filename }})</span>{% endif %}</td></tr>
     <tr><th>Address</th><td>{{ record.address }}</td></tr>
+    {% if record.outside_hours_informed %}
+    <tr><th>Outside gym hours</th>
+      <td>Approval from {{ record.outside_hours_approved_by }}
+        {%- if record.outside_hours_approval_mode %} ({{ record.outside_hours_approval_mode }}){% endif %}</td></tr>
+    {% endif %}
   </table>
 
   <h3>Client list</h3>

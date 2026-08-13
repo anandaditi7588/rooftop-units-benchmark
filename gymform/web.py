@@ -22,6 +22,7 @@ from fastapi.templating import Jinja2Templates
 from gymform import notify, storage
 from gymform.admin_auth import require_admin
 from gymform.models import (
+    APPROVAL_MODES,
     DAYS,
     OPERATING_HOURS_TEXT,
     ClientEntry,
@@ -106,6 +107,7 @@ def _template_context(request: Request, **extra) -> dict:
         "fee_slabs": FEE_SLABS,
         "id_proof_types": ID_PROOF_TYPES,
         "days": DAYS,
+        "approval_modes": APPROVAL_MODES,
         "operating_windows": OPERATING_WINDOWS,
         "operating_hours_text": OPERATING_HOURS_TEXT,
         "max_clients_per_session": MAX_CLIENTS_PER_SESSION,
@@ -129,6 +131,8 @@ def _empty_form_values() -> dict:
         "emergency_contact_mobile": "",
         "clients": [ClientEntry().as_dict()],
         "outside_hours_informed": False,
+        "outside_hours_approved_by": "",
+        "outside_hours_approval_mode": "",
         "outside_hours_note": "",
         "committee_approval_reference": "",
         "acknowledgements": {rule.key: False for rule in RULES},

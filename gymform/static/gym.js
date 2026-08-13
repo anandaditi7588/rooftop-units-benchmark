@@ -134,32 +134,52 @@
       });
     }
 
-    // Per-row warnings: end before start, or a slot outside gym hours.
+    /* Per-row notes: end before start, or a slot outside gym hours.
+
+       An out-of-hours slot is allowed with approval, so once the trainer has
+       confirmed approval in section 3 the note must stop looking like an
+       error. Leaving three red "you must inform the office" messages on
+       screen after they have ticked the box reads as "this form is refusing
+       me", and nobody presses Submit under a wall of red. */
+    var approvalGiven = !!(outsideHoursBlock &&
+      outsideHoursBlock.querySelector('input[name="outside_hours_informed"]:checked'));
+
     var anyOutside = false;
     schedules.forEach(function (item) {
       var warning = item.row.querySelector("[data-row-warning]");
       var message = "";
+      var isProblem = true;
       if (item.start !== null && item.end !== null) {
         if (item.end <= item.start) {
           message = "The end time must be after the start time.";
         } else if (!withinOperatingHours(item.start, item.end)) {
           anyOutside = true;
-          message = "This slot is outside gym hours (" + config.operatingHoursText +
-                    "). You must inform the office and security — see section 3.";
+          if (approvalGiven) {
+            message = "Outside gym hours — approval recorded in section 3 below.";
+            isProblem = false;
+          } else {
+            message = "This slot is outside gym hours (" + config.operatingHoursText +
+                      "). Confirm the society's approval in section 3 below.";
+          }
         }
       }
       if (warning) {
         warning.textContent = message;
         warning.hidden = !message;
+        warning.classList.toggle("error-text", isProblem);
+        warning.classList.toggle("row-note-ok", !isProblem);
       }
     });
 
     if (outsideHoursBlock) {
-      var checkbox = outsideHoursBlock.querySelector('input[name="outside_hours_informed"]');
-      // Keep the block visible if it is already ticked, so the answer is never
+      // Keep the block visible while it is ticked, so the answer is never
       // silently discarded by an edit elsewhere on the form.
-      outsideHoursBlock.hidden = !anyOutside && !(checkbox && checkbox.checked);
+      outsideHoursBlock.hidden = !anyOutside && !approvalGiven;
     }
+
+    // Who approved it, and how — only asked once approval is claimed.
+    var approvalDetails = document.getElementById("approvalDetails");
+    if (approvalDetails) approvalDetails.hidden = !approvalGiven;
 
     if (concurrencyWarning) {
       var concurrent = maxConcurrent(schedules);
