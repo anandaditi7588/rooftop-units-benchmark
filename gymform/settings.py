@@ -88,9 +88,12 @@ class GymFormSettings:
 
     # --- Misc -------------------------------------------------------------
     # Absolute URL the QR code should point at, e.g.
-    # https://silicon-bay.onrender.com/gym. Auto-derived from the incoming
-    # request when unset, which is right for most deployments.
-    public_url: str = field(default_factory=lambda: _env("GYM_PUBLIC_URL"))
+    # https://silicon-bay.onrender.com/gym. Falls back to RENDER_EXTERNAL_URL,
+    # which Render sets automatically on every web service — so a Render
+    # deployment encodes the right URL with nothing to configure. Failing both,
+    # it is derived from the incoming request.
+    public_url: str = field(
+        default_factory=lambda: _env("GYM_PUBLIC_URL") or _env("RENDER_EXTERNAL_URL"))
     request_timeout: int = field(
         default_factory=lambda: _env_int("GYM_HTTP_TIMEOUT", 15))
     # Minimum seconds between two submissions from the same IP address.

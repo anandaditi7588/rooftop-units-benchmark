@@ -239,3 +239,59 @@ data. Change the text or a fee there and the form, the acknowledgements, the
 rules page, the printed poster and the notification emails all update together.
 Rule acknowledgements are stored against stable keys, so rewording a rule never
 invalidates registrations that were already submitted.
+
+---
+
+## 10. Deploying to Render (free tier)
+
+Deploy **the form only**, not the whole repository. The form shares this repo
+with the RTU benchmarking tool but none of its code, so it needs six small
+packages rather than that tool's pandas/PyMuPDF/scikit-learn stack — which has
+previously run the free tier out of memory. `render.yaml` and
+`gymform/requirements.txt` are set up for exactly this.
+
+### Steps
+
+1. Go to [dashboard.render.com](https://dashboard.render.com) and sign up (the
+   free tier needs no card).
+2. **New → Blueprint**, connect your GitHub account, and pick the
+   `rooftop-units-benchmark` repository. Render reads `render.yaml` and offers
+   a service called **silicon-bay-gym-form**. Approve it.
+3. Wait for the first build (2-3 minutes). You now have a live address like
+   `https://silicon-bay-gym-form.onrender.com`.
+4. Open **Environment** on the service and set the four secrets the blueprint
+   left blank:
+
+   | Key | Value |
+   |---|---|
+   | `GYM_ADMIN_USERNAME` | any username you choose, e.g. `office` |
+   | `GYM_ADMIN_PASSWORD` | a password you choose |
+   | `GYM_SMTP_USER` | the Gmail address that sends the mail |
+   | `GYM_SMTP_PASSWORD` | that account's 16-character **App Password** (§3) |
+
+   Save — Render redeploys automatically.
+5. Confirm it works: open `https://<your-address>/admin/test-notification`'s
+   sibling check first — `https://<your-address>/health` should return
+   `"email_configured": true`. Then send a test registration to yourself:
+
+   ```bash
+   curl -u office:yourpassword -X POST https://<your-address>/admin/test-notification
+   ```
+
+6. Print the QR notice from `https://<your-address>/poster`. The QR encodes the
+   right URL automatically — Render sets `RENDER_EXTERNAL_URL`, and the form
+   reads it, so there is nothing to configure.
+
+Note that on the standalone deployment the form sits at the **site root**, so
+the paths have no `/gym` prefix: the form is `/`, the poster is `/poster`, the
+office pages are `/admin`.
+
+### Two free-tier facts worth knowing
+
+- **It sleeps after ~15 minutes idle.** The first scan after a quiet spell
+  takes 30-60 seconds to wake the service. Trainers see a slow load, not an
+  error. A paid instance ($7/month) stays awake.
+- **The disk is wiped on every redeploy**, so `output/gym_form/` is not durable
+  storage. The notification email — which carries the full summary and the ID
+  proof attachment — is the durable copy. Download the CSV from
+  `/admin/submissions.csv` periodically if you want a local archive.
