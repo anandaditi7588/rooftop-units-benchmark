@@ -15,13 +15,15 @@ import csv
 import json
 import logging
 import threading
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterator
 
-from gymform.models import Submission
+from gymform.models import IST, Submission
 from gymform.rules import RULES
 from gymform.settings import (
     ID_PROOF_DIR,
+    PAYMENTS_JSONL,
     SUBMISSIONS_CSV,
     SUBMISSIONS_JSONL,
     ensure_dirs,
@@ -57,6 +59,8 @@ CSV_COLUMNS: list[str] = [
     "declaration_place",
     "id_proof_filename",
     "all_rules_acknowledged",
+    "payment_upi_reference",
+    "payment_reported_at",
 ]
 
 
@@ -72,6 +76,9 @@ def _csv_row(record: dict[str, Any]) -> dict[str, Any]:
     row["all_rules_acknowledged"] = (
         "Yes" if all(acknowledgements.get(rule.key) for rule in RULES) else "No"
     )
+    payment = record.get("payment") or {}
+    row["payment_upi_reference"] = payment.get("upi_reference", "")
+    row["payment_reported_at"] = payment.get("reported_at", "")
     return row
 
 
@@ -107,6 +114,47 @@ def save_id_proof(reference: str, filename: str, content: bytes) -> Path:
     return destination
 
 
+def record_payment(reference: str, upi_reference: str, amount_inr: int) -> dict[str, Any]:
+    """Note that a trainer says they have paid.
+
+    Written to its own append-only file rather than editing the submission in
+    place: the registration record stays exactly as the trainer signed it, and
+    a payment claim can never corrupt or truncate it. Reported, not verified —
+    only the bank statement settles that.
+    """
+    ensure_dirs()
+    entry = {
+        "reference": reference,
+        "upi_reference": upi_reference,
+        "amount_inr": amount_inr,
+        "reported_at": datetime.now(IST).isoformat(),
+    }
+    with _write_lock:
+        with open(PAYMENTS_JSONL, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    logger.info("Gym form: payment reported for %s (UPI ref %s)", reference, upi_reference)
+    return entry
+
+
+def load_payments() -> dict[str, dict[str, Any]]:
+    """Latest reported payment per registration reference."""
+    payments: dict[str, dict[str, Any]] = {}
+    if not PAYMENTS_JSONL.exists():
+        return payments
+    with open(PAYMENTS_JSONL, "r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if entry.get("reference"):
+                payments[entry["reference"]] = entry
+    return payments
+
+
 def iter_submissions() -> Iterator[dict[str, Any]]:
     """Yield stored submissions, newest last. Skips any corrupted line."""
     if not SUBMISSIONS_JSONL.exists():
@@ -125,7 +173,10 @@ def iter_submissions() -> Iterator[dict[str, Any]]:
 
 
 def load_submissions(limit: int | None = None) -> list[dict[str, Any]]:
-    """Stored submissions, newest first."""
+    """Stored submissions, newest first, each with any reported payment."""
+    payments = load_payments()
     records = list(iter_submissions())
+    for record in records:
+        record["payment"] = payments.get(record.get("reference", ""))
     records.reverse()
     return records[:limit] if limit else records

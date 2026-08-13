@@ -39,6 +39,21 @@
       </td>
     </tr>
     <tr>
+      <th>Fee collection</th>
+      <td>
+        {% if settings.payments_enabled %}
+        <span class="pill pill-ok">UPI</span> to {{ settings.upi_id }}
+        <div class="small muted">
+          Trainers pay by UPI and enter the reference. UPI gives no automatic
+          confirmation, so match references against the bank statement.
+        </div>
+        {% else %}
+        <span class="pill pill-warn">Off</span>
+        <div class="small muted">Set GYM_UPI_ID to show a pay button on the confirmation page.</div>
+        {% endif %}
+      </td>
+    </tr>
+    <tr>
       <th>WhatsApp sending</th>
       <td>
         {% if settings.whatsapp_provider == 'link' %}
@@ -96,6 +111,19 @@
     {% if record.committee_approval_reference %}
     <tr><th>Committee approval</th><td>{{ record.committee_approval_reference }}</td></tr>
     {% endif %}
+    <tr><th>Amenity fee</th>
+      <td>
+        ₹{{ "{:,}".format(record.monthly_fee_inr) }} per month —
+        {% if record.payment %}
+        <span class="pill pill-warn">Reported paid</span>
+        <div class="small">UPI reference <strong>{{ record.payment.upi_reference }}</strong>,
+          entered {{ record.payment.reported_at[:16].replace('T', ' ') }}</div>
+        <div class="small muted">Trainer's own entry — match it against the bank statement.</div>
+        {% else %}
+        <span class="pill pill-warn">Not reported</span>
+        {% endif %}
+      </td>
+    </tr>
     <tr><th>Signed</th><td>{{ record.declaration_signature }}{% if record.declaration_place %}, {{ record.declaration_place }}{% endif %}</td></tr>
   </table>
 

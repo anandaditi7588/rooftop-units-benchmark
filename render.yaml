@@ -53,6 +53,12 @@ services:
       - key: GYM_SMTP_PASSWORD
         sync: false
 
+      # --- Amenity fee collection (optional) ---------------------------
+      # The society's UPI ID. Setting it shows a pay button and QR on the
+      # confirmation page; payment is reported by the trainer, not verified.
+      - key: GYM_UPI_ID
+        sync: false
+
       # --- WhatsApp (optional) -----------------------------------------
       # Leave all of these unset to have the office email carry a one-tap
       # wa.me link instead of sending automatically — free, but a person

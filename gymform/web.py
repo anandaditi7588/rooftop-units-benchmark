@@ -19,7 +19,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from gymform import notify, storage
+from gymform import notify, payments, storage
 from gymform.admin_auth import require_admin
 from gymform.models import (
     APPROVAL_MODES,
@@ -243,11 +243,32 @@ async def submit(request: Request):
     )
 
 
-@gym_app.get("/submitted/{reference}", response_class=HTMLResponse)
-def submitted_page(request: Request, reference: str):
-    record = next(
+def _find_submission(reference: str) -> dict | None:
+    return next(
         (r for r in storage.load_submissions() if r.get("reference") == reference), None
     )
+
+
+def _payment_context(settings, record: dict) -> dict:
+    """Everything the confirmation page needs to offer a UPI payment."""
+    if not settings.payments_enabled:
+        return {"payment_enabled": False}
+    return {
+        "payment_enabled": True,
+        "upi_id": settings.upi_id,
+        "upi_payee_name": settings.upi_payee_name,
+        "upi_uri": payments.build_upi_uri(
+            upi_id=settings.upi_id,
+            payee_name=settings.upi_payee_name,
+            amount=record.get("monthly_fee_inr", 0),
+            reference=record.get("reference", ""),
+        ),
+    }
+
+
+@gym_app.get("/submitted/{reference}", response_class=HTMLResponse)
+def submitted_page(request: Request, reference: str, paid: int = 0):
+    record = _find_submission(reference)
     if record is None:
         raise HTTPException(404, "Unknown submission reference.")
 
@@ -257,6 +278,7 @@ def submitted_page(request: Request, reference: str):
     whatsapp_link = next(
         (d["link"] for d in deliveries if d["channel"] == "whatsapp" and d["link"]), ""
     )
+    settings = get_settings()
     return templates.TemplateResponse(
         request, "submitted.html",
         _template_context(
@@ -264,9 +286,86 @@ def submitted_page(request: Request, reference: str):
             record=record,
             deliveries=deliveries,
             whatsapp_link=whatsapp_link,
-            office_email=get_settings().notify_email,
+            office_email=settings.notify_email,
+            payment_just_reported=bool(paid),
+            payment_error=request.query_params.get("payment_error", ""),
+            **_payment_context(settings, record),
         ),
     )
+
+
+@gym_app.get("/upi-qr/{reference}.png")
+def upi_qr(reference: str, size: int = 8):
+    """QR of the UPI intent, for paying from a different device.
+
+    The ``upi://`` button only works on a phone that has a UPI app installed;
+    scanning this covers everyone else.
+    """
+    settings = get_settings()
+    if not settings.payments_enabled:
+        raise HTTPException(404, "Payment collection is not switched on.")
+
+    record = _find_submission(reference)
+    if record is None:
+        raise HTTPException(404, "Unknown submission reference.")
+
+    try:
+        import qrcode
+    except ImportError as exc:  # pragma: no cover - depends on the install
+        raise HTTPException(501, "QR generation needs the 'qrcode' package.") from exc
+
+    uri = payments.build_upi_uri(
+        upi_id=settings.upi_id,
+        payee_name=settings.upi_payee_name,
+        amount=record.get("monthly_fee_inr", 0),
+        reference=reference,
+    )
+    qr = qrcode.QRCode(
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=max(4, min(int(size), 16)),
+        border=2,
+    )
+    qr.add_data(uri)
+    qr.make(fit=True)
+
+    buffer = io.BytesIO()
+    qr.make_image(fill_color="#16233a", back_color="white").save(buffer, format="PNG")
+    buffer.seek(0)
+    return StreamingResponse(buffer, media_type="image/png")
+
+
+@gym_app.post("/payment/{reference}")
+async def report_payment(request: Request, reference: str):
+    """Record the UPI reference a trainer says they paid with.
+
+    This is a *claim*, not a verification — UPI gives the server no callback,
+    so nothing here proves money moved. It is stored and forwarded to the
+    office so someone can match it against the bank statement, and every
+    surface that shows it says "reported" rather than "paid".
+    """
+    settings = get_settings()
+    if not settings.payments_enabled:
+        raise HTTPException(404, "Payment collection is not switched on.")
+
+    record = _find_submission(reference)
+    if record is None:
+        raise HTTPException(404, "Unknown submission reference.")
+
+    form = await request.form()
+    upi_reference = payments.clean_upi_reference(str(form.get("upi_reference") or ""))
+    base = _base_path(request)
+    if upi_reference is None:
+        return RedirectResponse(
+            f"{base}/submitted/{reference}"
+            "?payment_error=Enter+the+UPI+reference+number+shown+in+your+payment+app.",
+            status_code=303,
+        )
+
+    amount = record.get("monthly_fee_inr", 0)
+    await run_in_threadpool(storage.record_payment, reference, upi_reference, amount)
+    await run_in_threadpool(notify.notify_payment, settings, record, upi_reference, amount)
+
+    return RedirectResponse(f"{base}/submitted/{reference}?paid=1", status_code=303)
 
 
 # ---------------------------------------------------------------------------

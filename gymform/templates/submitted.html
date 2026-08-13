@@ -4,6 +4,13 @@
 
 {% block content %}
 
+{% if payment_just_reported %}
+<div class="alert alert-ok" style="margin-top:20px">
+  <strong>Thank you — your payment reference has been recorded</strong> and sent to
+  the society office. They will confirm it against the bank statement.
+</div>
+{% endif %}
+
 <div class="card card-lead">
   <h1>Thank you, {{ record.trainer_name }}.</h1>
   <p class="lead">
@@ -20,6 +27,70 @@
     Keep this reference — quote it when you follow up with the society office.
   </p>
 </div>
+
+{% if payment_enabled %}
+<div class="card" id="payment">
+  <h2>Pay the monthly amenity fee</h2>
+
+  {% if record.payment %}
+  <div class="alert alert-ok" style="margin-top:14px">
+    <strong>Payment reported.</strong>
+    UPI reference <strong>{{ record.payment.upi_reference }}</strong>, recorded on
+    {{ record.payment.reported_at[:10] }}. The society office will match it against
+    the bank statement and confirm.
+  </div>
+  {% else %}
+
+  {% if payment_error %}<div class="alert alert-danger">{{ payment_error }}</div>{% endif %}
+
+  <p class="hint">
+    Rule 1 — the amenity usage fee for {{ record.client_count }}
+    client{{ 's' if record.client_count != 1 else '' }} is
+    <strong>₹{{ "{:,}".format(record.monthly_fee_inr) }} per month</strong>.
+  </p>
+
+  <p style="margin:16px 0 6px">
+    <a class="btn btn-primary btn-block btn-lg" href="{{ upi_uri }}">
+      Pay ₹{{ "{:,}".format(record.monthly_fee_inr) }} with UPI
+    </a>
+  </p>
+  <p class="small muted" style="text-align:center;margin:0 0 18px">
+    Opens PhonePe, Google Pay, Paytm or any UPI app with the amount already filled in.
+  </p>
+
+  <div class="qr-card" style="border-top:1px solid var(--line);padding-top:18px">
+    <p class="small muted" style="margin-bottom:10px">
+      On a computer, or paying from another phone? Scan this:
+    </p>
+    <img src="{{ base }}/upi-qr/{{ record.reference }}.png" alt="UPI payment QR code"
+         style="width:200px;max-width:60vw;height:auto">
+    <p class="small muted" style="margin-top:10px">
+      Or pay directly to <strong>{{ upi_id }}</strong> ({{ upi_payee_name }})<br>
+      Please put <strong>{{ record.reference }}</strong> in the payment note.
+    </p>
+  </div>
+
+  <form method="post" action="{{ base }}/payment/{{ record.reference }}"
+        style="border-top:1px solid var(--line);margin-top:18px;padding-top:18px">
+    <div class="field">
+      <label for="upi_reference">After paying, enter the UPI reference number</label>
+      <input type="text" id="upi_reference" name="upi_reference"
+             placeholder="e.g. 412345678901" required>
+      <div class="hint" style="margin-bottom:0">
+        Your payment app shows this as the UPI transaction ID, UTR or reference
+        number. It lets the office match your payment in the society's account.
+      </div>
+    </div>
+    <button type="submit" class="btn btn-ghost btn-block">I have paid — record it</button>
+  </form>
+  {% endif %}
+
+  <p class="small muted" style="margin:16px 0 0">
+    The society confirms payment from its own bank records, so your registration
+    is not held up by this step.
+  </p>
+</div>
+{% endif %}
 
 <div class="card">
   <h2>Notification status</h2>
