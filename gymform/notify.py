@@ -128,7 +128,14 @@ def _operating_hours_text() -> str:
 
 
 def build_whatsapp_text(submission: Submission) -> str:
-    """A shorter message — WhatsApp is read on a phone, at a glance."""
+    """A shorter message — WhatsApp is read on a phone, at a glance.
+
+    Deliberately narrower than the email: it carries no ID *number* and no
+    home address. A WhatsApp notification travels through a third-party
+    provider and lands in a chat that gets forwarded, screenshotted and
+    backed up, so it says who registered and what they owe, and leaves the
+    identity documents to the email and the office review page.
+    """
     clients = "\n".join(
         f"• {c.name} (Flat {c.flat_number}) — {c.slot_label}" for c in submission.clients
     )
@@ -138,8 +145,8 @@ def build_whatsapp_text(submission: Submission) -> str:
         "",
         f"*{submission.trainer_name}*",
         f"📞 +91 {submission.mobile}",
-        f"✉️ {submission.email}",
-        f"🆔 {submission.id_type} — {submission.id_number}",
+        f"🆔 {submission.id_type} submitted"
+        + (" with a copy of the document" if submission.id_proof_filename else ""),
         "",
         f"*Clients ({submission.client_count})*",
         clients,
@@ -151,6 +158,7 @@ def build_whatsapp_text(submission: Submission) -> str:
     if submission.committee_approval_reference:
         parts.append(f"⚠️ Committee approval quoted: {submission.committee_approval_reference}")
     parts.append(f"\nAll {len(RULES)} rules acknowledged on {submission.submitted_at_label}.")
+    parts.append("Full details, ID proof and address are in the office email.")
     return "\n".join(parts)
 
 
@@ -448,6 +456,8 @@ def _send_whatsapp(settings: GymFormSettings, message: str) -> DeliveryResult:
         return _send_whatsapp_twilio(settings, number, message, link)
     if provider == "meta":
         return _send_whatsapp_meta(settings, number, message, link)
+    if provider == "callmebot":
+        return _send_whatsapp_callmebot(settings, number, message, link)
 
     return DeliveryResult(
         "whatsapp", False,
@@ -487,6 +497,41 @@ def _send_whatsapp_twilio(
     logger.warning("Gym form: Twilio returned %s: %s", response.status_code, detail)
     return DeliveryResult(
         "whatsapp", False, f"Twilio returned HTTP {response.status_code}: {detail}", link=link
+    )
+
+
+def _send_whatsapp_callmebot(
+    settings: GymFormSettings, number: str, message: str, link: str
+) -> DeliveryResult:
+    """Free relay to one pre-authorised number — no account, no card.
+
+    It answers with an HTML page rather than a status code for some failures,
+    so a 200 that contains "ERROR" is treated as a failure rather than
+    reported to the office as delivered.
+    """
+    try:
+        response = requests.get(
+            "https://api.callmebot.com/whatsapp.php",
+            params={"phone": f"+{number}", "text": message,
+                    "apikey": settings.callmebot_apikey},
+            timeout=settings.request_timeout,
+        )
+    except requests.RequestException as exc:
+        logger.warning("Gym form: CallMeBot request failed: %s", exc)
+        return DeliveryResult("whatsapp", False, f"CallMeBot request failed: {exc}", link=link)
+
+    body = response.text.strip()
+    if response.ok and "ERROR" not in body.upper():
+        logger.info("Gym form: WhatsApp sent via CallMeBot to +%s", number)
+        return DeliveryResult("whatsapp", True, f"Sent via CallMeBot to +{number}", link=link)
+
+    logger.warning("Gym form: CallMeBot returned %s: %s", response.status_code, body[:200])
+    return DeliveryResult(
+        "whatsapp", False,
+        f"CallMeBot rejected the message (HTTP {response.status_code}): {body[:200]}. "
+        "Check that the API key matches the recipient number, and that the number "
+        "has messaged the bot to authorise it.",
+        link=link,
     )
 
 

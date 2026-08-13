@@ -16,6 +16,28 @@ without touching any Python.
 
 ---
 
+## 0. What this costs
+
+**Nothing.** Every part of the running system has a free option, and the
+defaults use them:
+
+| Piece | Free option | Cost |
+|---|---|---|
+| Hosting | Render free tier — 750 instance hours/month, no credit card | ₹0 |
+| The form, QR code, poster, storage | Runs on that instance | ₹0 |
+| Email to the office and the trainer | Gmail SMTP with an App Password (~500 mails/day) | ₹0 |
+| WhatsApp — manual | One-tap `wa.me` link in the office email (default) | ₹0 |
+| WhatsApp — automatic | CallMeBot, free for personal use (§4, option B) | ₹0 |
+
+750 instance hours covers one service running every hour of a 31-day month
+(744), so a single form service stays inside the free allowance.
+
+The only things that ever cost money are optional upgrades you do not need:
+keeping the service awake instead of sleeping when idle (~$7/month), and the
+commercial WhatsApp providers (Twilio, Meta) if you outgrow the free relay.
+
+---
+
 ## 1. Pages
 
 Mounted at `/gym` on the main application (`https://<your-host>/gym`).
@@ -114,7 +136,30 @@ trainer's confirmation page offers the same one-tap link. Tapping it opens
 WhatsApp with the full registration summary already typed, addressed to
 +91 7588610829. Delivery is one tap, but a human has to make that tap.
 
-### Option B — Twilio (quickest automatic route)
+### Option B — CallMeBot (free, automatic)
+
+A free relay that will message one pre-authorised number. No account, no card.
+
+1. Save **+34 644 51 95 23** in the contacts of the phone that will *receive*
+   the alerts (+91 7588610829).
+2. From that phone, WhatsApp it: `I allow callmebot to send me messages`
+3. It replies with an API key. Set it on the server:
+
+   ```bash
+   GYM_CALLMEBOT_APIKEY=123456
+   ```
+
+Two caveats worth weighing before you switch it on. Its terms cover **personal
+use**, and a residents' association is a grey area — read them and decide. And
+messages pass through a third party's servers, which is why the WhatsApp text
+deliberately carries **no ID number and no home address**: it names the trainer,
+their mobile, the client list and the fee, and leaves the identity documents to
+the email and the office review page.
+
+If neither sits well, option A costs nothing either and keeps every trainer's
+detail between your server and your own inbox.
+
+### Option C — Twilio (commercial, free trial credit)
 
 1. Create a Twilio account and open **Messaging → Try it out → WhatsApp sandbox**.
 2. Send the sandbox join code from the +91 7588610829 phone once, so that number
@@ -131,7 +176,7 @@ The sandbox is fine for a society. For a permanent sender that never needs
 re-joining, apply for your own approved WhatsApp number in Twilio and put it in
 `GYM_TWILIO_WHATSAPP_FROM`.
 
-### Option C — WhatsApp Cloud API (direct from Meta)
+### Option D — WhatsApp Cloud API (direct from Meta)
 
 ```bash
 GYM_META_PHONE_NUMBER_ID=123456789012345
@@ -194,6 +239,7 @@ password can never lose a registration.
 | `GYM_SMTP_PASSWORD` | — | SMTP password / Gmail App Password |
 | `GYM_SMTP_FROM` | `GYM_SMTP_USER` | From address, if different |
 | `GYM_SMTP_USE_SSL` | `0` | `1` for implicit SSL (port 465) instead of STARTTLS |
+| `GYM_CALLMEBOT_APIKEY` | — | CallMeBot key (enables free automatic WhatsApp) |
 | `GYM_TWILIO_ACCOUNT_SID` | — | Twilio SID (enables Twilio WhatsApp) |
 | `GYM_TWILIO_AUTH_TOKEN` | — | Twilio auth token |
 | `GYM_TWILIO_WHATSAPP_FROM` | sandbox number | Approved WhatsApp sender |

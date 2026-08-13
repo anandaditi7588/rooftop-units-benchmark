@@ -354,6 +354,79 @@ def test_notifications_are_addressed_correctly(client, monkeypatch):
     assert "New personal trainer registration" not in trainer_text
 
 
+def test_whatsapp_text_withholds_the_identity_document(client, monkeypatch):
+    """WhatsApp travels through a third party and lands in a forwardable chat."""
+    from gymform.models import IST, ClientEntry, Submission
+    from datetime import datetime
+
+    submission = Submission(
+        reference="SB-PT-TEST-1", submitted_at=datetime.now(IST),
+        trainer_name="Ramesh Kulkarni", mobile="9876543210",
+        email="ramesh@example.com", id_type="Aadhar Card",
+        id_number="123456789012",
+        address="Flat 3, Sai Residency, Wadgaon Sheri, Pune 411014",
+        clients=[ClientEntry("Anil Shah", "A-101", ["mon"], "07:00", "08:00")],
+    )
+    from gymform.notify import build_summary_text, build_whatsapp_text
+
+    whatsapp = build_whatsapp_text(submission)
+    assert "123456789012" not in whatsapp
+    assert "Sai Residency" not in whatsapp
+    # ...but the office still learns who registered and what they owe.
+    assert "Ramesh Kulkarni" in whatsapp
+    assert "9876543210" in whatsapp
+    assert "Aadhar Card" in whatsapp
+    assert "1,000" in whatsapp
+
+    # The email is the channel that carries the full record.
+    email_text = build_summary_text(submission)
+    assert "123456789012" in email_text and "Sai Residency" in email_text
+
+
+def test_callmebot_is_used_when_its_free_key_is_set(client, monkeypatch):
+    calls: list[dict] = []
+
+    class Reply:
+        ok = True
+        status_code = 200
+        text = "Message queued. You will receive it in a few seconds."
+
+    def fake_get(url, params=None, timeout=None):
+        calls.append({"url": url, "params": params})
+        return Reply()
+
+    monkeypatch.setattr("gymform.notify.requests.get", fake_get)
+    monkeypatch.setenv("GYM_CALLMEBOT_APIKEY", "123456")
+
+    response = client.post("/gym/submit", data=payload(), follow_redirects=False)
+    assert response.status_code == 303
+
+    assert len(calls) == 1
+    assert "callmebot.com" in calls[0]["url"]
+    assert calls[0]["params"]["apikey"] == "123456"
+    assert calls[0]["params"]["phone"] == "+917588610829"
+    assert "Ramesh Kulkarni" in calls[0]["params"]["text"]
+
+    assert "Sent" in client.get(response.headers["location"]).text
+
+
+def test_callmebot_html_error_is_not_reported_as_delivered(client, monkeypatch):
+    """It answers 200 with an error page for a bad key — that is a failure."""
+    class Reply:
+        ok = True
+        status_code = 200
+        text = "<html>ERROR: APIKey is invalid</html>"
+
+    monkeypatch.setattr("gymform.notify.requests.get",
+                        lambda *a, **k: Reply())
+    monkeypatch.setenv("GYM_CALLMEBOT_APIKEY", "wrong")
+
+    response = client.post("/gym/submit", data=payload(), follow_redirects=False)
+    page = client.get(response.headers["location"])
+    assert "Not sent" in page.text
+    assert "CallMeBot rejected" in page.text
+
+
 def test_office_email_carries_the_id_proof_attachment(client, monkeypatch):
     sent: list[bytes] = []
 

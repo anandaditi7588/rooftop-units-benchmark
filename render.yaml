@@ -45,8 +45,12 @@ services:
         sync: false
 
       # --- WhatsApp (optional) -----------------------------------------
-      # Leave unset to have the office email carry a one-tap wa.me link
-      # instead of sending automatically.
+      # Leave all of these unset to have the office email carry a one-tap
+      # wa.me link instead of sending automatically — free, but a person
+      # taps it. GYM_CALLMEBOT_APIKEY is the free automatic route; the
+      # Twilio pair is the commercial one. See docs/GYM_FORM.md section 4.
+      - key: GYM_CALLMEBOT_APIKEY
+        sync: false
       - key: GYM_TWILIO_ACCOUNT_SID
         sync: false
       - key: GYM_TWILIO_AUTH_TOKEN

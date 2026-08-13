@@ -78,6 +78,15 @@ class GymFormSettings:
     twilio_from: str = field(
         default_factory=lambda: _env("GYM_TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886"))
 
+    # --- WhatsApp: CallMeBot (free) --------------------------------------
+    # A free relay that messages one pre-authorised number. No account, no
+    # card: the recipient WhatsApps the bot once and gets an API key back.
+    # Its terms restrict it to personal use, and messages pass through a
+    # third party — which is why the WhatsApp text carries no ID numbers or
+    # addresses. See docs/GYM_FORM.md before switching this on.
+    callmebot_apikey: str = field(
+        default_factory=lambda: _env("GYM_CALLMEBOT_APIKEY"))
+
     # --- WhatsApp: Meta (WhatsApp Cloud API) -----------------------------
     meta_phone_number_id: str = field(
         default_factory=lambda: _env("GYM_META_PHONE_NUMBER_ID"))
@@ -112,17 +121,30 @@ class GymFormSettings:
 
     @property
     def whatsapp_provider(self) -> str:
-        """Which WhatsApp backend will be used: 'twilio', 'meta' or 'link'.
+        """Which WhatsApp backend will be used.
 
-        'link' means no API credentials are configured, so the office gets a
-        one-tap wa.me link in the notification email instead of an automatic
-        WhatsApp message.
+        One of 'twilio', 'meta', 'callmebot' or 'link'. 'link' means no
+        credentials are configured, so the office gets a one-tap wa.me link in
+        the notification email instead of an automatic WhatsApp message —
+        still free, but a person has to tap it.
         """
         if self.twilio_account_sid and self.twilio_auth_token:
             return "twilio"
         if self.meta_phone_number_id and self.meta_access_token:
             return "meta"
+        if self.callmebot_apikey:
+            return "callmebot"
         return "link"
+
+    @property
+    def whatsapp_provider_label(self) -> str:
+        """Provider name as the office should see it on the review page."""
+        return {
+            "twilio": "Twilio",
+            "meta": "WhatsApp Cloud API",
+            "callmebot": "CallMeBot (free)",
+            "link": "Manual link",
+        }[self.whatsapp_provider]
 
 
 def get_settings() -> GymFormSettings:

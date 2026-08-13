@@ -330,12 +330,16 @@ they submit.
 | Printable QR notice | `https://<your-host>/gym/poster` |
 | Registrations received (office only) | `https://<your-host>/gym/admin` |
 
+**It runs at no cost.** Render's free tier (750 instance hours/month, no card)
+hosts it, Gmail SMTP sends the mail, and WhatsApp has a free route — see
+[§0 of the guide](docs/GYM_FORM.md) for the full breakdown.
+
 Out of the box the form validates and stores every submission with no
 configuration at all. To switch on email, add `GYM_SMTP_USER` and
-`GYM_SMTP_PASSWORD` (a Gmail **App Password**, not the account password); to
-switch on automatic WhatsApp, add Twilio or WhatsApp Cloud API credentials.
-Without WhatsApp credentials the notification email carries a one-tap link that
-sends the same summary instead.
+`GYM_SMTP_PASSWORD` (a Gmail **App Password**, not the account password). For
+automatic WhatsApp, `GYM_CALLMEBOT_APIKEY` is free; Twilio and the WhatsApp
+Cloud API are the commercial alternatives. With none of them set, the
+notification email carries a one-tap link that sends the same summary.
 
 **Set `GYM_ADMIN_USERNAME` and `GYM_ADMIN_PASSWORD` before going live** —
 submissions contain trainers' phone numbers, addresses and government ID
