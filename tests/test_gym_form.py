@@ -36,6 +36,7 @@ def client(tmp_path, monkeypatch):
     for module in (settings_module, storage_module):
         monkeypatch.setattr(module, "SUBMISSIONS_JSONL", tmp_path / "submissions.jsonl")
         monkeypatch.setattr(module, "SUBMISSIONS_CSV", tmp_path / "submissions.csv")
+        monkeypatch.setattr(module, "PAYMENTS_JSONL", tmp_path / "payments.jsonl")
         monkeypatch.setattr(module, "ID_PROOF_DIR", tmp_path / "id_proofs")
     monkeypatch.setattr(settings_module, "DATA_DIR", tmp_path)
     monkeypatch.setenv("GYM_SUBMIT_COOLDOWN", "0")
@@ -606,6 +607,7 @@ async def test_sending_never_runs_on_the_event_loop_thread(tmp_path, monkeypatch
     for module in (settings_module, storage_module):
         monkeypatch.setattr(module, "SUBMISSIONS_JSONL", tmp_path / "submissions.jsonl")
         monkeypatch.setattr(module, "SUBMISSIONS_CSV", tmp_path / "submissions.csv")
+        monkeypatch.setattr(module, "PAYMENTS_JSONL", tmp_path / "payments.jsonl")
         monkeypatch.setattr(module, "ID_PROOF_DIR", tmp_path / "id_proofs")
     monkeypatch.setattr(settings_module, "DATA_DIR", tmp_path)
     monkeypatch.setenv("GYM_SUBMIT_COOLDOWN", "0")
@@ -787,3 +789,127 @@ def test_whapi_is_chosen_over_callmebot(monkeypatch):
     monkeypatch.setenv("GYM_WHAPI_TOKEN", "whapi-test-token")
     assert get_settings().whatsapp_provider == "whapi"
     assert get_settings().whatsapp_provider_label == "Whapi.Cloud"
+
+
+# ---------------------------------------------------------------------------
+# Amenity fee collection over UPI
+# ---------------------------------------------------------------------------
+
+def _submit_and_get_reference(client) -> str:
+    response = client.post("/gym/submit", data=payload(), follow_redirects=False)
+    assert response.status_code == 303
+    return response.headers["location"].rsplit("/", 1)[-1]
+
+
+def test_payment_section_is_off_until_a_upi_id_is_set(client, monkeypatch):
+    monkeypatch.delenv("GYM_UPI_ID", raising=False)
+    reference = _submit_and_get_reference(client)
+    page = client.get(f"/gym/submitted/{reference}")
+    assert "Pay the monthly amenity fee" not in page.text
+    assert client.get(f"/gym/upi-qr/{reference}.png").status_code == 404
+    assert client.post(f"/gym/payment/{reference}",
+                       data={"upi_reference": "412345678901"}).status_code == 404
+
+
+def test_upi_link_carries_payee_amount_and_reference(client, monkeypatch):
+    monkeypatch.setenv("GYM_UPI_ID", "siliconbay@okhdfcbank")
+    monkeypatch.setenv("GYM_UPI_PAYEE_NAME", "Silicon Bay Society")
+
+    reference = _submit_and_get_reference(client)
+    page = client.get(f"/gym/submitted/{reference}")
+    assert page.status_code == 200
+    assert "upi://pay?" in page.text
+    assert "siliconbay%40okhdfcbank" in page.text     # pa=, URL-encoded
+    assert "am=1000.00" in page.text                  # two clients -> first slab
+    assert "cu=INR" in page.text
+    assert reference in page.text
+
+    qr = client.get(f"/gym/upi-qr/{reference}.png")
+    assert qr.status_code == 200
+    assert qr.content.startswith(b"\x89PNG")
+
+
+def test_upi_amount_follows_the_fee_slab(monkeypatch):
+    from gymform.payments import build_upi_uri
+
+    uri = build_upi_uri(upi_id="a@b", payee_name="Soc", amount=2000, reference="SB-PT-1")
+    assert "am=2000.00" in uri
+    assert "pa=a%40b" in uri
+
+
+def test_reporting_a_payment_records_and_notifies(client, monkeypatch, tmp_path):
+    posts: list[dict] = []
+
+    class Reply:
+        ok = True
+        status_code = 201
+        text = "{}"
+
+    monkeypatch.setattr("gymform.notify.requests.post",
+                        lambda url, json=None, **k: (posts.append(json), Reply())[1])
+    monkeypatch.setenv("GYM_BREVO_API_KEY", "xkeysib-test")
+    monkeypatch.setenv("GYM_UPI_ID", "siliconbay@okhdfcbank")
+
+    reference = _submit_and_get_reference(client)
+    posts.clear()   # drop the registration emails
+
+    response = client.post(f"/gym/payment/{reference}",
+                           data={"upi_reference": "412345678901"},
+                           follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"].endswith("?paid=1")
+
+    page = client.get(f"/gym/submitted/{reference}")
+    assert "Payment reported" in page.text
+    assert "412345678901" in page.text
+    # The pay button is gone once a payment is on record.
+    assert "I have paid — record it" not in page.text
+
+    assert (tmp_path / "payments.jsonl").exists()
+
+    office = posts[0]["textContent"]
+    assert "412345678901" in office
+    assert "not a confirmed receipt" in office
+
+
+def test_a_junk_payment_reference_is_rejected(client, monkeypatch):
+    monkeypatch.setenv("GYM_UPI_ID", "siliconbay@okhdfcbank")
+    reference = _submit_and_get_reference(client)
+
+    response = client.post(f"/gym/payment/{reference}",
+                           data={"upi_reference": "??"}, follow_redirects=False)
+    assert response.status_code == 303
+    assert "payment_error" in response.headers["location"]
+
+    page = client.get(response.headers["location"])
+    assert "Enter the UPI reference number" in page.text
+    assert "Payment reported" not in page.text
+
+
+def test_payment_endpoints_reject_an_unknown_reference(client, monkeypatch):
+    monkeypatch.setenv("GYM_UPI_ID", "siliconbay@okhdfcbank")
+    assert client.get("/gym/upi-qr/SB-PT-NOPE.png").status_code == 404
+    assert client.post("/gym/payment/SB-PT-NOPE",
+                       data={"upi_reference": "412345678901"}).status_code == 404
+
+
+def test_office_page_shows_payment_status(client, monkeypatch):
+    monkeypatch.setenv("GYM_UPI_ID", "siliconbay@okhdfcbank")
+    monkeypatch.setenv("GYM_ADMIN_USERNAME", "office")
+    monkeypatch.setenv("GYM_ADMIN_PASSWORD", "secret")
+
+    reference = _submit_and_get_reference(client)
+
+    page = client.get("/gym/admin", auth=("office", "secret"))
+    assert "Not reported" in page.text
+
+    client.post(f"/gym/payment/{reference}", data={"upi_reference": "412345678901"},
+                follow_redirects=False)
+
+    page = client.get("/gym/admin", auth=("office", "secret"))
+    assert "Reported paid" in page.text
+    assert "412345678901" in page.text
+    assert "match it against the bank statement" in page.text
+
+    csv_export = client.get("/gym/admin/submissions.csv", auth=("office", "secret"))
+    assert "payment_upi_reference" in csv_export.text

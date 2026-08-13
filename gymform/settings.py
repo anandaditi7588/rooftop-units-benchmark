@@ -18,6 +18,7 @@ BASE_DIR: Path = Path(__file__).resolve().parent.parent
 DATA_DIR: Path = BASE_DIR / "output" / "gym_form"
 SUBMISSIONS_JSONL: Path = DATA_DIR / "submissions.jsonl"
 SUBMISSIONS_CSV: Path = DATA_DIR / "submissions.csv"
+PAYMENTS_JSONL: Path = DATA_DIR / "payments.jsonl"
 ID_PROOF_DIR: Path = DATA_DIR / "id_proofs"
 
 TEMPLATES_DIR: Path = Path(__file__).resolve().parent / "templates"
@@ -114,6 +115,14 @@ class GymFormSettings:
     meta_api_version: str = field(
         default_factory=lambda: _env("GYM_META_API_VERSION", "v21.0"))
 
+    # --- Amenity fee collection (UPI) -------------------------------------
+    # The society's UPI ID (VPA), e.g. "siliconbay@okhdfcbank". Setting it
+    # switches on the payment section of the confirmation page; leaving it
+    # blank keeps the form registration-only.
+    upi_id: str = field(default_factory=lambda: _env("GYM_UPI_ID"))
+    upi_payee_name: str = field(
+        default_factory=lambda: _env("GYM_UPI_PAYEE_NAME", "Silicon Bay Society"))
+
     # --- Misc -------------------------------------------------------------
     # Absolute URL the QR code should point at, e.g.
     # https://silicon-bay.onrender.com/gym. Falls back to RENDER_EXTERNAL_URL,
@@ -129,6 +138,11 @@ class GymFormSettings:
         default_factory=lambda: _env_int("GYM_SUBMIT_COOLDOWN", 20))
     max_id_proof_bytes: int = field(
         default_factory=lambda: _env_int("GYM_MAX_ID_PROOF_BYTES", 5 * 1024 * 1024))
+
+    @property
+    def payments_enabled(self) -> bool:
+        """Payment collection is off until the society's UPI ID is set."""
+        return bool(self.upi_id)
 
     @property
     def email_provider(self) -> str:

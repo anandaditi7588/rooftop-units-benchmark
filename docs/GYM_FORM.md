@@ -253,6 +253,49 @@ pretending it worked.
 
 ---
 
+## 4b. Collecting the amenity fee over UPI
+
+Off until the society's UPI ID is set:
+
+```bash
+GYM_UPI_ID=siliconbay@okhdfcbank
+GYM_UPI_PAYEE_NAME=Silicon Bay Society
+```
+
+The confirmation page then shows a **Pay ₹1,000 with UPI** button (the amount
+follows the trainer's fee slab), a scannable QR of the same payment, and the
+UPI ID in plain text. Tapping the button opens PhonePe, Google Pay, Paytm or
+any UPI app with payee, amount and the registration reference already filled
+in.
+
+### What this does not do
+
+**UPI gives the server no confirmation.** There is no callback, so the form
+cannot know whether money moved. After paying, the trainer enters the UPI
+reference number; that is stored, emailed to the office and shown on the review
+page — labelled **"reported"**, never "paid". Someone still has to match it
+against the society's bank statement. Every surface says so, deliberately: a
+green "Paid" tick nobody had verified would be worse than no tick at all.
+
+The claim is stored in its own `payments.jsonl`, never written back into the
+registration record, so a payment entry cannot alter what the trainer signed.
+
+### If you want automatic confirmation
+
+That needs a payment gateway — Razorpay, Cashfree, PayU — which verifies
+payment via webhook and can mark a registration paid with nobody checking. It
+costs roughly 2% + GST per transaction (about ₹24 on ₹1,000) and requires
+society KYC: PAN, bank account and registration documents. The UPI route above
+costs nothing and needs no approval, which is why it is the default.
+
+### The fee is monthly
+
+A registration happens once; the fee recurs. This collects **the first month**.
+Later months need either a reminder from the office or a UPI Autopay mandate,
+which only a gateway can set up.
+
+---
+
 ## 5. The QR code
 
 Open **`https://<your-host>/gym/poster`** and print it (Ctrl/Cmd + P). It is an
@@ -313,6 +356,8 @@ password can never lose a registration.
 | `GYM_META_ACCESS_TOKEN` | — | WhatsApp Cloud API token |
 | `GYM_ADMIN_USERNAME` | falls back to `RTU_AUTH_USERNAME` | Login for the review pages |
 | `GYM_ADMIN_PASSWORD` | falls back to `RTU_AUTH_PASSWORD` | Password for the review pages |
+| `GYM_UPI_ID` | — | Society UPI ID; setting it switches on fee collection |
+| `GYM_UPI_PAYEE_NAME` | `Silicon Bay Society` | Payee name shown in the UPI app |
 | `GYM_PUBLIC_URL` | derived from the request | Pin the URL the QR encodes |
 | `GYM_SUBMIT_COOLDOWN` | `20` | Seconds between submissions from one IP |
 | `GYM_MAX_ID_PROOF_BYTES` | `5242880` | Upload size limit (5 MB) |

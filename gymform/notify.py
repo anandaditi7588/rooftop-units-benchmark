@@ -795,3 +795,69 @@ def notify_all(settings: GymFormSettings, submission: Submission) -> list[Delive
         ))
 
     return results
+
+
+def notify_payment(
+    settings: GymFormSettings, record: dict, upi_reference: str, amount_inr: int
+) -> list[DeliveryResult]:
+    """Tell the office a trainer has reported paying the amenity fee.
+
+    Worded as a claim throughout. Nothing here has been verified against the
+    bank — the office still has to match the reference — and saying "paid"
+    would invite them to skip that check.
+    """
+    trainer = record.get("trainer_name", "A trainer")
+    reference = record.get("reference", "")
+    subject = (
+        f"[{SOCIETY_NAME}] Amenity fee reported paid — {trainer} "
+        f"(INR {amount_inr:,}) — {reference}"
+    )
+    text = "\n".join([
+        f"{trainer} has reported paying the gym amenity fee.",
+        "",
+        f"Registration : {reference}",
+        f"Amount       : INR {amount_inr:,}",
+        f"UPI reference: {upi_reference}",
+        f"Clients      : {record.get('client_count', 0)}",
+        f"Mobile       : +91 {record.get('mobile', '')}",
+        "",
+        "This is what the trainer entered, not a confirmed receipt. Please match "
+        "the UPI reference against the society bank statement before treating it "
+        "as settled.",
+    ])
+    html = f"""\
+<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#f4f7fb;padding:20px">
+  <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden">
+    <div style="background:#16233a;color:#fff;padding:20px 24px">
+      <div style="font-size:19px;font-weight:700">Amenity fee reported paid</div>
+      <div style="font-size:13px;opacity:.8;margin-top:4px">{_html_escape(reference)}</div>
+    </div>
+    <div style="padding:20px 24px;font-size:14px;color:#16233a">
+      <p><strong>{_html_escape(trainer)}</strong> has reported paying
+         <strong>₹{amount_inr:,}</strong>.</p>
+      <p style="padding:12px 14px;background:#eef3f9;border-radius:10px">
+        UPI reference: <strong>{_html_escape(upi_reference)}</strong>
+      </p>
+      <p style="padding:12px 14px;background:#fff6e5;border-left:4px solid #e0a800;border-radius:6px;color:#7a5200">
+        This is the trainer's own entry, not a confirmed receipt. Match it against
+        the society bank statement before treating the fee as settled.
+      </p>
+    </div>
+  </div>
+</div>"""
+
+    results = [_send_email(
+        settings, to=settings.notify_email, subject=subject,
+        text_body=text, html_body=html,
+    )]
+
+    whatsapp_text = "\n".join([
+        f"*Amenity fee reported — {SOCIETY_NAME}*",
+        f"{trainer} reports paying ₹{amount_inr:,}",
+        f"UPI ref: {upi_reference}",
+        f"Registration: {reference}",
+        "",
+        "Not verified — please check the bank statement.",
+    ])
+    results.append(_send_whatsapp(settings, whatsapp_text))
+    return results
