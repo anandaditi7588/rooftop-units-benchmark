@@ -709,3 +709,81 @@ def test_test_alert_stays_behind_the_office_password(client, monkeypatch):
     monkeypatch.delenv("RTU_AUTH_USERNAME", raising=False)
     monkeypatch.delenv("RTU_AUTH_PASSWORD", raising=False)
     assert client.post("/gym/admin/test-notification").status_code == 503
+
+
+# ---------------------------------------------------------------------------
+# Whapi.Cloud WhatsApp provider
+# ---------------------------------------------------------------------------
+
+def test_whapi_sends_the_registration(client, monkeypatch):
+    calls: list[dict] = []
+
+    class Reply:
+        ok = True
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {"sent": True, "message": {"id": "abc"}}
+
+    def fake_post(url, json=None, headers=None, timeout=None, **kwargs):
+        calls.append({"url": url, "json": json, "headers": headers})
+        return Reply()
+
+    monkeypatch.setattr("gymform.notify.requests.post", fake_post)
+    monkeypatch.setenv("GYM_WHAPI_TOKEN", "whapi-test-token")
+
+    response = client.post("/gym/submit", data=payload(), follow_redirects=False)
+    assert response.status_code == 303
+
+    assert calls[0]["url"] == "https://gate.whapi.cloud/messages/text"
+    assert calls[0]["headers"]["Authorization"] == "Bearer whapi-test-token"
+    assert calls[0]["json"]["to"] == "917588610829"
+    assert "Ramesh Kulkarni" in calls[0]["json"]["body"]
+    # The identity document still must not travel over WhatsApp.
+    assert "123456789012" not in calls[0]["json"]["body"]
+
+    assert "Sent" in client.get(response.headers["location"]).text
+
+
+def test_whapi_accepting_but_not_sending_is_reported(client, monkeypatch):
+    """A 200 with sent=false means the linked WhatsApp channel is not ready."""
+    class Reply:
+        ok = True
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {"sent": False, "error": {"message": "channel not ready"}}
+
+    monkeypatch.setattr("gymform.notify.requests.post", lambda *a, **k: Reply())
+    monkeypatch.setenv("GYM_WHAPI_TOKEN", "whapi-test-token")
+
+    response = client.post("/gym/submit", data=payload(), follow_redirects=False)
+    page = client.get(response.headers["location"])
+    assert "Not sent" in page.text
+    assert "channel is linked" in page.text
+
+
+def test_whapi_bad_token_is_explained(client, monkeypatch):
+    class Reply:
+        ok = False
+        status_code = 401
+        text = '{"error":"unauthorized"}'
+
+    monkeypatch.setattr("gymform.notify.requests.post", lambda *a, **k: Reply())
+    monkeypatch.setenv("GYM_WHAPI_TOKEN", "wrong")
+
+    response = client.post("/gym/submit", data=payload(), follow_redirects=False)
+    page = client.get(response.headers["location"])
+    assert "GYM_WHAPI_TOKEN" in page.text
+
+
+def test_whapi_is_chosen_over_callmebot(monkeypatch):
+    from gymform.settings import get_settings
+
+    monkeypatch.setenv("GYM_CALLMEBOT_APIKEY", "123456")
+    assert get_settings().whatsapp_provider == "callmebot"
+    monkeypatch.setenv("GYM_WHAPI_TOKEN", "whapi-test-token")
+    assert get_settings().whatsapp_provider == "whapi"
+    assert get_settings().whatsapp_provider_label == "Whapi.Cloud"

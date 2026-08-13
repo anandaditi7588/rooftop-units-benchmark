@@ -27,7 +27,7 @@ defaults use them:
 | The form, QR code, poster, storage | Runs on that instance | ₹0 |
 | Email to the office and the trainer | Gmail SMTP with an App Password (~500 mails/day) | ₹0 |
 | WhatsApp — manual | One-tap `wa.me` link in the office email (default) | ₹0 |
-| WhatsApp — automatic | CallMeBot, free for personal use (§4, option B) | ₹0 |
+| WhatsApp — automatic | Whapi.Cloud free tier, or CallMeBot (§4) | ₹0 |
 
 750 instance hours covers one service running every hour of a 31-day month
 (744), so a single form service stays inside the free allowance.
@@ -171,7 +171,34 @@ trainer's confirmation page offers the same one-tap link. Tapping it opens
 WhatsApp with the full registration summary already typed, addressed to
 +91 7588610829. Delivery is one tap, but a human has to make that tap.
 
-### Option B — CallMeBot (free, automatic)
+### Option B — Whapi.Cloud (free tier, automatic)
+
+Sends through a WhatsApp account you link by QR code, so there is no Meta
+Business verification and no per-message billing. The sandbox tier is free and
+allows far more than a society's handful of registrations a month.
+
+1. Sign up at [whapi.cloud](https://whapi.cloud) and create a channel.
+2. Link it by scanning the QR code with the phone that will *send* the alerts.
+   This can be the office phone; the alerts then arrive from that account.
+3. Copy the channel's **API token** from the dashboard.
+4. Set on the server:
+
+   ```bash
+   GYM_WHAPI_TOKEN=your-channel-token
+   # GYM_WHAPI_BASE_URL=https://gate.whapi.cloud   # only if your channel shows a different gate
+   ```
+
+The linked WhatsApp account is the dependency: if it is unlinked, logged out,
+or the phone stays offline long enough, sending stops. Whapi answers `200` with
+`{"sent": false}` in that case, which the form reports as a failure rather than
+treating as delivered — so the confirmation page tells you, instead of alerts
+going quietly missing.
+
+Like every free WhatsApp route, this is an unofficial bridge rather than Meta's
+sanctioned API. The official path is option D, which costs a small amount per
+message but cannot be switched off underneath you.
+
+### Option C — CallMeBot (free, automatic)
 
 A free relay that will message one pre-authorised number. No account, no card.
 
@@ -194,7 +221,7 @@ the email and the office review page.
 If neither sits well, option A costs nothing either and keeps every trainer's
 detail between your server and your own inbox.
 
-### Option C — Twilio (commercial, free trial credit)
+### Option D — Twilio (commercial, free trial credit)
 
 1. Create a Twilio account and open **Messaging → Try it out → WhatsApp sandbox**.
 2. Send the sandbox join code from the +91 7588610829 phone once, so that number
@@ -211,7 +238,7 @@ The sandbox is fine for a society. For a permanent sender that never needs
 re-joining, apply for your own approved WhatsApp number in Twilio and put it in
 `GYM_TWILIO_WHATSAPP_FROM`.
 
-### Option D — WhatsApp Cloud API (direct from Meta)
+### Option E — WhatsApp Cloud API (direct from Meta)
 
 ```bash
 GYM_META_PHONE_NUMBER_ID=123456789012345
@@ -276,7 +303,9 @@ password can never lose a registration.
 | `GYM_SMTP_PASSWORD` | — | SMTP password / Gmail App Password |
 | `GYM_SMTP_FROM` | `GYM_SMTP_USER` | From address, if different |
 | `GYM_SMTP_USE_SSL` | `0` | `1` for implicit SSL (port 465) instead of STARTTLS |
-| `GYM_CALLMEBOT_APIKEY` | — | CallMeBot key (enables free automatic WhatsApp) |
+| `GYM_WHAPI_TOKEN` | — | Whapi.Cloud channel token (free automatic WhatsApp) |
+| `GYM_WHAPI_BASE_URL` | `https://gate.whapi.cloud` | Whapi gate URL, if yours differs |
+| `GYM_CALLMEBOT_APIKEY` | — | CallMeBot key (alternative free automatic WhatsApp) |
 | `GYM_TWILIO_ACCOUNT_SID` | — | Twilio SID (enables Twilio WhatsApp) |
 | `GYM_TWILIO_AUTH_TOKEN` | — | Twilio auth token |
 | `GYM_TWILIO_WHATSAPP_FROM` | sandbox number | Approved WhatsApp sender |
