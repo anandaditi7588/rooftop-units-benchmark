@@ -341,3 +341,36 @@ office pages are `/admin`.
   storage. The notification email — which carries the full summary and the ID
   proof attachment — is the durable copy. Download the CSV from
   `/admin/submissions.csv` periodically if you want a local archive.
+
+---
+
+## 11. Troubleshooting
+
+### "502 Bad Gateway" right after submitting
+
+The submission itself almost certainly succeeded — check `/admin`, and note the
+reference in the address bar (`/submitted/SB-PT-...`). A 502 means the host
+could not reach the service *at that moment*, not that the form rejected
+anything.
+
+The cause fixed in this repository was the notification send running on the
+web server's event loop: a slow mail server froze every other request,
+including Render's health check, and Render restarted the instance mid-flow.
+Sending now happens off the loop. If you see a 502 again, check the service's
+**Logs** tab in Render for the real reason, and confirm the instance is not
+simply cold-starting from idle sleep (the first request after ~15 minutes of
+inactivity can take up to a minute).
+
+### The confirmation page says "Not sent" for email
+
+Open `/health`. If `email_configured` is `false`, `GYM_SMTP_USER` or
+`GYM_SMTP_PASSWORD` is missing on the host. If it is `true` but mail still
+fails, the confirmation page prints the SMTP error — an authentication failure
+almost always means a normal Gmail password was used instead of a 16-character
+App Password.
+
+### The QR code points at the wrong address
+
+Open `/health` and read `form_url` — that is exactly what the QR encodes. On
+Render it comes from `RENDER_EXTERNAL_URL` automatically. Behind a custom
+domain, set `GYM_PUBLIC_URL` to the address trainers should reach.
