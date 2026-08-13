@@ -36,6 +36,18 @@ DAYS: tuple[tuple[str, str], ...] = (
 DAY_CODES: tuple[str, ...] = tuple(code for code, _ in DAYS)
 DAY_LABELS: dict[str, str] = dict(DAYS)
 
+# How a trainer can have obtained permission for an out-of-hours slot. Free
+# text would make these unsearchable for the office, so the common routes are
+# offered as choices with "Other" as the escape hatch.
+APPROVAL_MODES: tuple[str, ...] = (
+    "In person at the society office",
+    "Phone call",
+    "WhatsApp message",
+    "Email",
+    "Letter / entry in the society register",
+    "Other",
+)
+
 MOBILE_RE = re.compile(r"^[6-9]\d{9}$")
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$")
 AADHAAR_RE = re.compile(r"^\d{12}$")
@@ -147,6 +159,8 @@ class Submission:
     clients: list[ClientEntry] = field(default_factory=list)
 
     outside_hours_informed: bool = False
+    outside_hours_approved_by: str = ""
+    outside_hours_approval_mode: str = ""
     outside_hours_note: str = ""
     committee_approval_reference: str = ""
 
@@ -194,6 +208,8 @@ class Submission:
             "client_count": self.client_count,
             "monthly_fee_inr": self.monthly_fee,
             "outside_hours_informed": self.outside_hours_informed,
+            "outside_hours_approved_by": self.outside_hours_approved_by,
+            "outside_hours_approval_mode": self.outside_hours_approval_mode,
             "outside_hours_note": self.outside_hours_note,
             "committee_approval_reference": self.committee_approval_reference,
             "acknowledgements": dict(self.acknowledgements),
@@ -346,6 +362,8 @@ def parse_submission(form: dict[str, object]) -> tuple[Submission | None, dict[s
 
     # --- Timings (rule 2) -------------------------------------------------
     outside_hours_informed = checked("outside_hours_informed")
+    outside_hours_approved_by = text("outside_hours_approved_by")
+    outside_hours_approval_mode = text("outside_hours_approval_mode")
     outside_hours_note = text("outside_hours_note")
     outside_rows = [
         f"Client {i + 1} ({c.name or 'unnamed'})"
@@ -354,11 +372,24 @@ def parse_submission(form: dict[str, object]) -> tuple[Submission | None, dict[s
             and to_minutes(c.end_time) is not None
             and not within_operating_hours(to_minutes(c.start_time), to_minutes(c.end_time)))
     ]
-    if outside_rows and not outside_hours_informed:
-        errors["outside_hours_informed"] = (
-            f"{', '.join(outside_rows)} falls outside gym hours ({OPERATING_HOURS_TEXT}). "
-            "Confirm you have informed the society office and the security team."
-        )
+    if outside_rows:
+        if not outside_hours_informed:
+            errors["outside_hours_informed"] = (
+                f"{', '.join(outside_rows)} falls outside gym hours "
+                f"({OPERATING_HOURS_TEXT}). Confirm you have taken approval for it."
+            )
+        else:
+            # Ticking the box is a claim of approval, so it has to be
+            # accountable: the office needs to know who granted it and how, or
+            # the tick is worth nothing when a dispute comes up later.
+            if len(outside_hours_approved_by) < 3:
+                errors["outside_hours_approved_by"] = (
+                    "Enter the name of the person who approved the out-of-hours slot."
+                )
+            if outside_hours_approval_mode not in APPROVAL_MODES:
+                errors["outside_hours_approval_mode"] = (
+                    "Choose how you took the approval."
+                )
 
     # --- Trainee limit (rules 4 and 14) -----------------------------------
     committee_reference = text("committee_approval_reference")
@@ -398,6 +429,8 @@ def parse_submission(form: dict[str, object]) -> tuple[Submission | None, dict[s
         "emergency_contact_mobile": emergency_mobile,
         "clients": [c.as_dict() for c in clients] or [ClientEntry().as_dict()],
         "outside_hours_informed": outside_hours_informed,
+        "outside_hours_approved_by": outside_hours_approved_by,
+        "outside_hours_approval_mode": outside_hours_approval_mode,
         "outside_hours_note": outside_hours_note,
         "committee_approval_reference": committee_reference,
         "acknowledgements": acknowledgements,
@@ -424,6 +457,8 @@ def parse_submission(form: dict[str, object]) -> tuple[Submission | None, dict[s
         emergency_contact_mobile=emergency_mobile,
         clients=clients,
         outside_hours_informed=outside_hours_informed,
+        outside_hours_approved_by=outside_hours_approved_by,
+        outside_hours_approval_mode=outside_hours_approval_mode,
         outside_hours_note=outside_hours_note,
         committee_approval_reference=committee_reference,
         acknowledgements=acknowledgements,

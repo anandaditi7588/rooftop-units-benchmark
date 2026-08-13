@@ -171,8 +171,85 @@ def test_slot_outside_gym_hours_needs_a_confirmation(client):
     assert "outside gym hours" in response.text
 
     data["outside_hours_informed"] = "1"
+    data["outside_hours_approved_by"] = "Mr Patil, Society Secretary"
+    data["outside_hours_approval_mode"] = "Phone call"
     assert client.post("/gym/submit", data=data,
                        follow_redirects=False).status_code == 303
+
+
+def test_midday_slots_submit_once_approval_is_given(client):
+    """The reported failure: several clients trained between 11am and 4pm.
+
+    Every one of those slots sits in the gap between the two operating
+    windows, so all of them are flagged. Confirming approval must clear the
+    lot in one go, not once per client.
+    """
+    data = payload()
+    for key in ("client_name", "client_flat", "client_start", "client_end"):
+        data.pop(key)
+    data.update({
+        "client_name": ["Client One", "Client Two", "Client Three"],
+        "client_flat": ["A-101", "B-202", "C-303"],
+        "client_start": ["11:30", "12:30", "14:00"],
+        "client_end": ["12:30", "13:30", "15:00"],
+        "outside_hours_informed": "1",
+        "outside_hours_approved_by": "Mr Patil, Society Secretary",
+        "outside_hours_approval_mode": "In person at the society office",
+    })
+    for i in range(3):
+        data[f"client_days_{i}"] = ["mon", "wed"]
+
+    response = client.post("/gym/submit", data=data, follow_redirects=False)
+    assert response.status_code == 303, response.text[:600]
+    page = client.get(response.headers["location"])
+    assert "Mr Patil" in page.text
+
+
+def test_claiming_approval_requires_naming_who_gave_it(client):
+    """A tick with nobody's name behind it cannot be checked later."""
+    data = payload(client_start=["11:30", "12:30"], client_end=["12:30", "13:30"])
+    data["outside_hours_informed"] = "1"
+
+    response = client.post("/gym/submit", data=data)
+    assert response.status_code == 400
+    assert "who approved" in response.text
+    assert "how you took the approval" in response.text
+
+    data["outside_hours_approved_by"] = "Mr Patil, Society Secretary"
+    response = client.post("/gym/submit", data=data)
+    assert response.status_code == 400, "still missing how it was taken"
+
+    data["outside_hours_approval_mode"] = "WhatsApp message"
+    assert client.post("/gym/submit", data=data,
+                       follow_redirects=False).status_code == 303
+
+
+def test_approval_details_reach_the_office(client, monkeypatch):
+    posts: list[dict] = []
+
+    class Reply:
+        ok = True
+        status_code = 201
+        text = "{}"
+
+    monkeypatch.setattr("gymform.notify.requests.post",
+                        lambda url, json=None, **k: (posts.append(json), Reply())[1])
+    monkeypatch.setenv("GYM_BREVO_API_KEY", "xkeysib-test")
+
+    data = payload(client_start=["11:30", "12:30"], client_end=["12:30", "13:30"])
+    data.update({
+        "outside_hours_informed": "1",
+        "outside_hours_approved_by": "Mr Patil, Society Secretary",
+        "outside_hours_approval_mode": "Phone call",
+        "outside_hours_note": "Approved on 12 Aug for the monsoon months",
+    })
+    assert client.post("/gym/submit", data=data,
+                       follow_redirects=False).status_code == 303
+
+    office = posts[0]["textContent"]
+    assert "Approval taken from: Mr Patil, Society Secretary" in office
+    assert "How it was taken: Phone call" in office
+    assert "monsoon months" in office
 
 
 def test_more_than_four_clients_at_once_needs_committee_approval(client):

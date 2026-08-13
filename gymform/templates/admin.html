@@ -82,7 +82,14 @@
     {% endif %}
     {% if record.outside_hours_informed %}
     <tr><th>Outside gym hours</th>
-      <td><span class="pill pill-warn">Declared</span> {{ record.outside_hours_note }}</td></tr>
+      <td>
+        <span class="pill pill-warn">Approval declared</span>
+        {% if record.outside_hours_approved_by %}
+        <div class="small">From <strong>{{ record.outside_hours_approved_by }}</strong>
+          {%- if record.outside_hours_approval_mode %} · {{ record.outside_hours_approval_mode }}{% endif %}</div>
+        {% endif %}
+        {% if record.outside_hours_note %}<div class="small muted">{{ record.outside_hours_note }}</div>{% endif %}
+      </td></tr>
     {% endif %}
     {% if record.committee_approval_reference %}
     <tr><th>Committee approval</th><td>{{ record.committee_approval_reference }}</td></tr>

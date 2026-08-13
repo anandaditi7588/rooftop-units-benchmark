@@ -232,21 +232,46 @@
     <div id="outsideHoursBlock" {% if not values.outside_hours_informed and not errors.outside_hours_informed %}hidden{% endif %}>
       <div class="alert alert-warn" id="outsideHoursNotice">
         One or more of your slots falls outside the gym's operating hours.
-        You must inform the society office <em>and</em> the security team before training.
+        That is allowed only with the society's approval — tick below and say
+        who approved it.
       </div>
       <div class="field {% if errors.outside_hours_informed %}has-error{% endif %}">
         <label class="check">
           <input type="checkbox" name="outside_hours_informed" value="1"
                  {% if values.outside_hours_informed %}checked{% endif %}>
-          <span>I have informed the society office and the security team about the slot outside gym hours.</span>
+          <span>I have taken approval from the society for training outside gym hours.</span>
         </label>
         {% if errors.outside_hours_informed %}<div class="error-text">{{ errors.outside_hours_informed }}</div>{% endif %}
       </div>
-      <div class="field">
-        <label for="outside_hours_note">Details of the out-of-hours slot</label>
-        <input type="text" id="outside_hours_note" name="outside_hours_note"
-               value="{{ values.outside_hours_note }}"
-               placeholder="Who did you inform, and when?">
+
+      <!-- Revealed by gym.js only once the box above is ticked: a claim of
+           approval has to name who gave it, or it cannot be checked later. -->
+      <div id="approvalDetails" {% if not values.outside_hours_informed %}hidden{% endif %}>
+        <div class="grid-2">
+          <div class="field {% if errors.outside_hours_approved_by %}has-error{% endif %}">
+            <label for="outside_hours_approved_by">Approval taken from <span class="req">*</span></label>
+            <input type="text" id="outside_hours_approved_by" name="outside_hours_approved_by"
+                   value="{{ values.outside_hours_approved_by }}"
+                   placeholder="Name, and their role in the society">
+            {% if errors.outside_hours_approved_by %}<div class="error-text">{{ errors.outside_hours_approved_by }}</div>{% endif %}
+          </div>
+          <div class="field {% if errors.outside_hours_approval_mode %}has-error{% endif %}">
+            <label for="outside_hours_approval_mode">How did you take the approval? <span class="req">*</span></label>
+            <select id="outside_hours_approval_mode" name="outside_hours_approval_mode">
+              <option value="">Select…</option>
+              {% for mode in approval_modes %}
+              <option value="{{ mode }}" {% if values.outside_hours_approval_mode == mode %}selected{% endif %}>{{ mode }}</option>
+              {% endfor %}
+            </select>
+            {% if errors.outside_hours_approval_mode %}<div class="error-text">{{ errors.outside_hours_approval_mode }}</div>{% endif %}
+          </div>
+        </div>
+        <div class="field">
+          <label for="outside_hours_note">Any other details</label>
+          <input type="text" id="outside_hours_note" name="outside_hours_note"
+                 value="{{ values.outside_hours_note }}"
+                 placeholder="Date of approval, reference number, or anything else (optional)">
+        </div>
       </div>
     </div>
 

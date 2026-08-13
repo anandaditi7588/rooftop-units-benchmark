@@ -49,6 +49,8 @@ CSV_COLUMNS: list[str] = [
     "monthly_fee_inr",
     "clients",
     "outside_hours_informed",
+    "outside_hours_approved_by",
+    "outside_hours_approval_mode",
     "outside_hours_note",
     "committee_approval_reference",
     "declaration_signature",
