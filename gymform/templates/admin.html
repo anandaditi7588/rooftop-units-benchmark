@@ -21,11 +21,18 @@
     <tr>
       <th>Email sending</th>
       <td>
-        {% if settings.email_configured %}
-        <span class="pill pill-ok">Configured</span> via {{ settings.smtp_host }}
+        {% if settings.email_provider == 'brevo' %}
+        <span class="pill pill-ok">Brevo</span> from {{ settings.email_sender }}
+        <div class="small muted">Sent over HTTPS, so it works on hosts that block outbound SMTP.</div>
+        {% elif settings.email_provider == 'smtp' %}
+        <span class="pill pill-ok">SMTP</span> via {{ settings.smtp_host }}
+        <div class="small muted">
+          Note: free hosting tiers often block outbound SMTP. If mail fails with a
+          network error, set GYM_BREVO_API_KEY to send over HTTPS instead.
+        </div>
         {% else %}
         <span class="pill pill-warn">Not configured</span>
-        <div class="small muted">Set GYM_SMTP_USER and GYM_SMTP_PASSWORD to switch email on.</div>
+        <div class="small muted">Set GYM_BREVO_API_KEY (free, works everywhere) to switch email on.</div>
         {% endif %}
       </td>
     </tr>

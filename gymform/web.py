@@ -375,6 +375,7 @@ def health(request: Request):
         "status": "ok",
         "form_url": _form_url(request),
         "email_configured": settings.email_configured,
+        "email_provider": settings.email_provider,
         "whatsapp_provider": settings.whatsapp_provider,
     }
 
@@ -389,6 +390,7 @@ def diagnostics(request: Request):
         "notify_email": settings.notify_email,
         "notify_whatsapp": f"+{settings.notify_whatsapp}",
         "email_configured": settings.email_configured,
+        "email_provider": settings.email_provider,
         "email_sender": settings.email_sender,
         "smtp_host": f"{settings.smtp_host}:{settings.smtp_port}",
         "whatsapp_provider": settings.whatsapp_provider,
