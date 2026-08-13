@@ -67,7 +67,9 @@ class GymFormSettings:
     smtp_from: str = field(default_factory=lambda: _env("GYM_SMTP_FROM"))
     smtp_use_ssl: bool = field(
         default_factory=lambda: _env("GYM_SMTP_USE_SSL", "0") == "1")
-    smtp_timeout: int = field(default_factory=lambda: _env_int("GYM_SMTP_TIMEOUT", 20))
+    # Kept short on purpose: the trainer waits on the confirmation page while
+    # the mail goes out, and two sends share this budget.
+    smtp_timeout: int = field(default_factory=lambda: _env_int("GYM_SMTP_TIMEOUT", 12))
 
     # --- WhatsApp: Twilio -----------------------------------------------
     twilio_account_sid: str = field(

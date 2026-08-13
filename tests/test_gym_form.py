@@ -427,6 +427,60 @@ def test_callmebot_html_error_is_not_reported_as_delivered(client, monkeypatch):
     assert "CallMeBot rejected" in page.text
 
 
+async def test_sending_never_runs_on_the_event_loop_thread(tmp_path, monkeypatch):
+    """Regression: a submission must not block the server while it sends.
+
+    Sending is blocking I/O — smtplib, then an HTTPS call — and each can sit
+    for its full timeout when a mail server is slow. The submit handler is
+    `async`, so calling it inline pins the event loop for the whole send and
+    every other request stalls behind it, health checks included. A host that
+    health-checks its instances (Render does) reads that as a dead service and
+    restarts it, which turns a successful submission into a 502 on the
+    confirmation page — exactly the failure seen in production.
+
+    The invariant is asserted by thread rather than by elapsed time: the send
+    must happen off the loop's own thread. Timing is not reliable here, because
+    in-process the health request can finish before the submission task even
+    reaches the send, so a stopwatch reports success against the bug.
+    """
+    import threading
+
+    import httpx
+
+    import gymform.settings as settings_module
+    import gymform.storage as storage_module
+
+    for module in (settings_module, storage_module):
+        monkeypatch.setattr(module, "SUBMISSIONS_JSONL", tmp_path / "submissions.jsonl")
+        monkeypatch.setattr(module, "SUBMISSIONS_CSV", tmp_path / "submissions.csv")
+        monkeypatch.setattr(module, "ID_PROOF_DIR", tmp_path / "id_proofs")
+    monkeypatch.setattr(settings_module, "DATA_DIR", tmp_path)
+    monkeypatch.setenv("GYM_SUBMIT_COOLDOWN", "0")
+
+    loop_thread = threading.current_thread()
+    ran_on: dict[str, threading.Thread] = {}
+
+    def record_thread(settings, submission):
+        ran_on["notify"] = threading.current_thread()
+        return []
+
+    monkeypatch.setattr("gymform.web.notify.notify_all", record_thread)
+
+    parent = FastAPI()
+    parent.mount("/gym", gym_app)
+
+    transport = httpx.ASGITransport(app=parent)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as http:
+        response = await http.post("/gym/submit", data=payload())
+
+    assert response.status_code == 303
+    assert "notify" in ran_on, "notifications were never attempted"
+    assert ran_on["notify"] is not loop_thread, (
+        "notifications ran on the event loop thread — a slow mail server will "
+        "freeze every other request and get the service restarted"
+    )
+
+
 def test_office_email_carries_the_id_proof_attachment(client, monkeypatch):
     sent: list[bytes] = []
 

@@ -14,6 +14,7 @@ import time
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -205,7 +206,9 @@ async def submit(request: Request):
                 limit_mb = settings.max_id_proof_bytes / (1024 * 1024)
                 errors["id_proof"] = f"That file is larger than {limit_mb:.0f} MB."
             else:
-                stored = storage.save_id_proof(submission.reference, upload.filename, content)
+                stored = await run_in_threadpool(
+                    storage.save_id_proof, submission.reference, upload.filename, content
+                )
                 submission.id_proof_filename = Path(upload.filename).name
                 submission.id_proof_path = str(stored)
 
@@ -217,8 +220,18 @@ async def submit(request: Request):
         )
 
     # Store first: a notification failure must never lose a registration.
-    storage.save_submission(submission)
-    results = notify.notify_all(settings, submission)
+    #
+    # Both of these are blocking calls — file writes, then smtplib and an HTTPS
+    # request that can each sit for their full timeout when a mail server is
+    # slow. This handler is `async`, so running them inline would block the
+    # event loop for the whole send, freezing *every* other request on the
+    # process, health checks included. A host that health-checks its instances
+    # (Render does) then reads that as a dead service and restarts it — which
+    # is exactly how a successful submission ends up on a 502 page a moment
+    # later. Offloading to the threadpool keeps the loop free while still
+    # letting the confirmation page report real delivery results.
+    await run_in_threadpool(storage.save_submission, submission)
+    results = await run_in_threadpool(notify.notify_all, settings, submission)
     _remember_delivery(submission.reference, results)
 
     return RedirectResponse(
