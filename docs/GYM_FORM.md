@@ -476,6 +476,34 @@ Note that on the standalone deployment the form sits at the **site root**, so
 the paths have no `/gym` prefix: the form is `/`, the poster is `/poster`, the
 office pages are `/admin`.
 
+### Keeping the first scan fast
+
+Render's free tier shuts the service down after ~15 minutes with no traffic, so
+the next scan waits 30-60 seconds while the instance starts. Trainers read that
+as broken, which is why the poster says the first scan may take a minute.
+
+To remove the wait, keep the service warm with a free uptime pinger — for
+example [cron-job.org](https://cron-job.org) or
+[UptimeRobot](https://uptimerobot.com) — hitting:
+
+```
+https://<your-host>/health
+```
+
+Mind the quota. The free tier allows **750 instance hours a month**, and staying
+awake around the clock costs **744** in a 31-day month: it fits, but with only
+six hours to spare, and exceeding it suspends the service until the 1st.
+
+**Ping only during gym hours instead.** The gym runs 6-11am and 4-9pm — ten
+hours a day, about **310 hours a month**. That covers every moment a trainer
+could be standing at the door with a phone, and leaves a wide margin. In
+cron-job.org, set the schedule to every 10 minutes and restrict the hours to
+06-10 and 16-20.
+
+Note this is a workaround for a limit Render put there deliberately; it stays
+inside the hours they grant, but if you would rather not, a paid instance
+($7/month) never sleeps.
+
 ### Two free-tier facts worth knowing
 
 - **It sleeps after ~15 minutes idle.** The first scan after a quiet spell

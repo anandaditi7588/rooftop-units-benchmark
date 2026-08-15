@@ -1039,3 +1039,12 @@ def test_status_reaches_the_csv(client, monkeypatch):
 
     csv_export = client.get("/gym/admin/submissions.csv", auth=auth)
     assert "status" in csv_export.text
+
+
+def test_poster_warns_about_the_cold_start(client):
+    """Free hosting sleeps when idle; a trainer should not read that as broken."""
+    page = client.get("/gym/poster")
+    assert "up to a minute" in page.text
+    assert "not broken" in page.text
+    # And it sets the expectation that approval, not submission, grants entry.
+    assert "approve before your first session" in page.text
