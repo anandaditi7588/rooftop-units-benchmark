@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Scan here — {{ society_name }}{% endblock %}
+{% block header_title %}Printable notice{% endblock %}
+
+{% block content %}
+
+<div class="no-print alert alert-ok">
+  Print this page (Ctrl/Cmd + P) and put it up at the society gate, the lobby
+  notice board and the gym door. One code covers both forms — whoever scans it
+  picks what they need.
+</div>
+
+<div class="card poster">
+  <div class="eyebrow" style="color:#5b6b80">{{ society_name }} · {{ society_address }}</div>
+  <h1>Scan Here</h1>
+  <p class="lead" style="max-width:34em;margin:0 auto">
+    Book the hall, lawn or community hall for your function — or register as a
+    personal trainer. Both forms open from this one code.
+  </p>
+
+  <p style="margin:26px 0 10px">
+    <img src="{{ base }}/qr.png?size=12" alt="QR code linking to the society's online forms"
+         style="width:300px;max-width:80vw;height:auto">
+  </p>
+  <p class="url">{{ form_url }}</p>
+
+  <div class="poster-steps">
+    <ol>
+      <li>Open your phone camera and point it at the code.</li>
+      <li>Choose <strong>Book a hall or lawn</strong> or
+          <strong>Register as a personal trainer</strong>.</li>
+      <li>Fill in the form and accept the society rules.</li>
+      <li>Submit — the society office is notified at once.</li>
+      <li>Wait for the office to confirm before making final arrangements.</li>
+    </ol>
+  </div>
+
+  <p class="poster-note">
+    The first scan of the day can take up to a minute to open. Please wait —
+    the page is loading, not broken.
+  </p>
+
+  <p class="small muted" style="max-width:38em;margin:0 auto">
+    Amenity bookings run 8:30 am to 10:00 pm · charges are collected in cash one
+    day before the function · a refundable deposit of ₹5,000 is payable by cheque
+  </p>
+</div>
+
+<p class="no-print" style="text-align:center;margin:20px 0 0">
+  <a class="btn btn-ghost" href="{{ base }}/qr.png?size=16" download="silicon-bay-forms-qr.png">
+    Download the QR code image
+  </a>
+</p>
+
+{% endblock %}

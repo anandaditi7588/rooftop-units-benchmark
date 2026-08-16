@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}{{ document_title }} — {{ society_name }}{% endblock %}
+{% block header_title %}Rules for amenity use{% endblock %}
+
+{% block content %}
+
+<div class="card card-lead">
+  <h1>{{ document_title }}</h1>
+  <p class="lead">
+    The complete rulebook every resident accepts when booking the Conference Hall,
+    the Party Lawn or the Community Hall for a personal event.
+  </p>
+  <p style="margin:14px 0 0">
+    <a class="btn btn-primary" href="{{ base }}/">Go to the booking form</a>
+    <a class="btn btn-ghost" href="{{ base }}/calendar">See booked dates</a>
+  </p>
+</div>
+
+<div class="card">
+  <h2>Amenities and charges</h2>
+  <p class="hint">
+    Cash is collected one day before the function and goes to the society's
+    cultural fund. A refundable security deposit of
+    ₹{{ "{:,}".format(security_deposit_inr) }} is payable by cheque.
+  </p>
+  <div class="table-scroll">
+    <table class="data-table">
+      <tr><th>Amenity</th><th>Where</th><th>Maximum persons</th><th>Charges</th></tr>
+      {% for venue in venues %}
+      <tr>
+        <td>{{ venue.name }}</td>
+        <td>{{ venue.location }}</td>
+        <td>{{ venue.max_persons }}</td>
+        <td>
+          {% for slot in venue.slots %}
+          {{ slot.label }} — ₹{{ "{:,}".format(slot.charge_inr) }}{{ "<br>"|safe if not loop.last }}
+          {% endfor %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+
+  <h3>Timings</h3>
+  <p class="small muted">
+    Bookings run {{ booking_hours_text }} at the latest, except for the society's
+    own common functions and activities.
+  </p>
+</div>
+
+<div class="card">
+  {% for rule in rules %}
+  <div class="rule">
+    <div class="rule-head">
+      <span class="rule-number">{{ rule.number }}</span>
+      <span class="rule-title">{{ rule.title }}</span>
+    </div>
+    <div class="rule-body">
+      {% for paragraph in rule.paragraphs %}<p>{{ paragraph }}</p>{% endfor %}
+      {% if rule.bullets %}
+      <ul>{% for bullet in rule.bullets %}<li>{{ bullet }}</li>{% endfor %}</ul>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<p style="text-align:center;margin:24px 0 0">
+  <a class="btn btn-primary btn-lg" href="{{ base }}/">Book an amenity</a>
+</p>
+
+{% endblock %}

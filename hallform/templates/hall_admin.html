@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}Amenity bookings — {{ society_name }}{% endblock %}
+{% block header_title %}Amenity bookings (office){% endblock %}
+
+{% block content %}
+
+<div class="card card-lead">
+  <h1>{{ records|length }} booking{{ 's' if records|length != 1 else '' }}</h1>
+  <p class="lead">Every amenity booking received through the online form, newest first.</p>
+  <p style="margin:14px 0 0">
+    <a class="btn btn-ghost" href="{{ base }}/admin/bookings.csv">Download CSV</a>
+    <a class="btn btn-ghost" href="{{ base }}/calendar">Upcoming dates</a>
+  </p>
+</div>
+
+<div class="card">
+  <h2>Delivery &amp; archive</h2>
+  <table class="data-table">
+    <tr><th>Notification email</th><td>{{ settings.notify_email }}</td></tr>
+    <tr><th>Notification WhatsApp</th><td>+{{ settings.notify_whatsapp }}</td></tr>
+    <tr>
+      <th>Email sending</th>
+      <td>
+        {% if settings.email_provider == 'none' %}
+        <span class="pill pill-warn">Not configured</span>
+        {% else %}
+        <span class="pill pill-ok">
+          {{ 'Brevo' if settings.email_provider == 'brevo' else 'SMTP' }}
+        </span>
+        from {{ settings.email_sender }}
+        {% endif %}
+      </td>
+    </tr>
+    <tr>
+      <th>WhatsApp sending</th>
+      <td>
+        {% if settings.whatsapp_provider == 'link' %}
+        <span class="pill pill-warn">Manual link</span>
+        <div class="small muted">The office email carries a one-tap wa.me link instead.</div>
+        {% else %}
+        <span class="pill pill-ok">{{ settings.whatsapp_provider_label }}</span>
+        {% endif %}
+      </td>
+    </tr>
+    <tr>
+      <th>Google Sheet history</th>
+      <td>
+        {% if settings.sheets_enabled %}
+        <span class="pill pill-ok">Connected</span>
+        <div class="small muted">
+          Every booking is mirrored to the “Hall bookings” tab and updated when its
+          status changes. This is the durable history — the server's own disk is
+          wiped on redeploy.
+        </div>
+        {% else %}
+        <span class="pill pill-warn">Off</span>
+        <div class="small muted">Set GYM_SHEETS_WEBHOOK_URL to archive bookings in a Google Sheet.</div>
+        {% endif %}
+      </td>
+    </tr>
+  </table>
+</div>
+
+{% for record in records %}
+<div class="card" id="{{ record.reference }}">
+  <div class="section-head" style="justify-content:space-between">
+    <h2>{{ record.venue_name }}</h2>
+    <span class="small muted">{{ record.reference }}</span>
+  </div>
+  <p style="margin:0 0 10px">
+    {% if record.status == 'approved' %}
+      <span class="pill pill-ok">Confirmed</span>
+    {% elif record.status == 'rejected' %}
+      <span class="pill pill-danger">Rejected</span>
+    {% else %}
+      <span class="pill pill-warn">Awaiting your decision</span>
+    {% endif %}
+    {% if record.approval %}
+    <span class="small muted">
+      &nbsp;{{ record.approval.decided_at[:16].replace('T', ' ') }}
+      {%- if record.approval.note %} — {{ record.approval.note }}{% endif %}
+    </span>
+    {% endif %}
+  </p>
+  <p class="small muted" style="margin-top:0">
+    Submitted {{ record.submitted_at }}
+  </p>
+
+  <table class="data-table">
+    <tr><th>When</th><td><strong>{{ record.when_label }}</strong> · {{ record.slot_label }}</td></tr>
+    <tr><th>Resident</th><td>{{ record.resident_name }} — Flat {{ record.flat_number }}</td></tr>
+    <tr><th>Mobile</th><td>+91 {{ record.mobile }}</td></tr>
+    <tr><th>WhatsApp</th><td>+91 {{ record.whatsapp }}</td></tr>
+    <tr><th>Email</th><td>{{ record.email }}</td></tr>
+    <tr><th>Occasion</th><td>{{ record.occasion }}
+      {%- if record.occasion_detail %} — {{ record.occasion_detail }}{% endif %}</td></tr>
+    <tr><th>Persons</th><td>{{ record.expected_persons }}</td></tr>
+    <tr><th>Charge</th>
+      <td>
+        ₹{{ "{:,}".format(record.charge_inr) }} —
+        {% if record.payment %}
+        <span class="pill pill-warn">Reported paid by UPI</span>
+        <div class="small">Reference <strong>{{ record.payment.upi_reference }}</strong>,
+          entered {{ record.payment.reported_at[:16].replace('T', ' ') }}</div>
+        <div class="small muted">Resident's own entry — match it against the society account.</div>
+        {% else %}
+        <span class="pill pill-warn">Cash due one day before</span>
+        {% endif %}
+      </td>
+    </tr>
+    <tr><th>Security deposit</th>
+      <td>₹{{ "{:,}".format(record.security_deposit_inr) }} refundable, by cheque</td></tr>
+    <tr><th>Signed</th><td>{{ record.declaration_signature }}{% if record.declaration_place %}, {{ record.declaration_place }}{% endif %}</td></tr>
+  </table>
+
+  <form method="post" action="{{ base }}/admin/decision/{{ record.reference }}"
+        class="decision-bar">
+    <input type="text" name="note" placeholder="Note (optional) — e.g. key with the security desk"
+           class="decision-note">
+    <button type="submit" name="decision" value="approved" class="btn btn-approve">
+      {% if record.status == 'approved' %}Re-confirm{% else %}Confirm{% endif %}
+    </button>
+    <button type="submit" name="decision" value="rejected" class="btn btn-reject">
+      Reject
+    </button>
+  </form>
+  <p class="small muted" style="margin:6px 0 0">
+    Confirming blocks this slot for every other resident. Rejecting releases it.
+    Either way the resident is emailed and messaged.
+  </p>
+</div>
+{% else %}
+<div class="card">
+  <p class="muted">
+    No bookings yet. Put the QR notice up at the society gate so residents can scan it.
+  </p>
+</div>
+{% endfor %}
+
+{% endblock %}

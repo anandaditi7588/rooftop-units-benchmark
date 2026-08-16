@@ -5,8 +5,16 @@ Personal Trainers"* document asks a trainer to submit, records their
 acknowledgement of all 15 rules, and notifies the society office by **email**
 and **WhatsApp** the moment a trainer submits.
 
-A trainer scans a QR code at the gym door → the form opens on their phone →
-they fill it in and submit → the office is notified.
+A trainer scans a QR code at the gym door → they pick **Register as a personal
+trainer** → the form opens on their phone → they fill it in and submit → the
+office is notified.
+
+> **The society now has two forms behind one QR code.** Scanning lands on a
+> chooser page offering *Book a hall or lawn* and *Register as a personal
+> trainer*. The trainer form lives at `/trainer`, the booking form at `/hall`.
+> The hall booking form has its own guide: **[docs/HALL_BOOKING.md](HALL_BOOKING.md)**.
+> Everything about email, WhatsApp, UPI, hosting and the Google Sheet below is
+> shared by both.
 
 - **Notification email:** `dulange111@gmail.com`
 - **Notification WhatsApp:** `+91 7588610829`
@@ -40,24 +48,44 @@ commercial WhatsApp providers (Twilio, Meta) if you outgrow the free relay.
 
 ## 1. Pages
 
-Mounted at `/gym` on the main application (`https://<your-host>/gym`).
+On the deployed service (`gymform.standalone:app`) these sit at the site root.
+Mounted on the main RTU application they all sit under `/gym` instead.
+
+**Shared front door**
 
 | Page | Who it is for | Password? |
 |---|---|---|
-| `/gym/` | The registration form itself | Public |
-| `/gym/rules` | The full rulebook, readable on a phone | Public |
-| `/gym/poster` | **Printable A4 notice with the QR code** | Public |
-| `/gym/qr.png` | The QR code as a PNG (`?size=4…20`) | Public |
-| `/gym/submitted/<ref>` | Confirmation page after submitting | Public |
-| `/gym/admin` | All registrations received | Office only |
-| `/gym/admin/submissions.csv` | Same data as a spreadsheet | Office only |
-| `/gym/admin/diagnostics` | Which delivery channels are live | Office only |
-| `/gym/admin/test-notification` | Sends a dummy registration (POST) | Office only |
+| `/` | The chooser — pick a form | Public |
+| `/poster` | **Printable A4 notice with the QR code** | Public |
+| `/qr.png` | The QR code as a PNG (`?size=4…20`) | Public |
+| `/health` | Liveness check for the uptime pinger | Public |
 
-The form is public on purpose — a trainer at the gym gate cannot be expected to
-hold a password. The review pages are separately protected and **fail closed**:
-until you set an admin login they return 503 rather than serve trainers'
-ID numbers and addresses to anyone who finds the URL.
+**Trainer registration**
+
+| Page | Who it is for | Password? |
+|---|---|---|
+| `/trainer/` | The registration form itself | Public |
+| `/trainer/rules` | The full rulebook, readable on a phone | Public |
+| `/trainer/poster` | Printable notice for the gym door specifically | Public |
+| `/trainer/submitted/<ref>` | Confirmation page after submitting | Public |
+| `/trainer/decide/<ref>` | Approve / reject, from the office email | Signed link |
+| `/trainer/admin` | All registrations received | Office only |
+| `/trainer/admin/submissions.csv` | Same data as a spreadsheet | Office only |
+| `/trainer/admin/sheet-sync` | Push every registration to the Sheet (POST) | Office only |
+| `/trainer/admin/diagnostics` | Which delivery channels are live | Office only |
+| `/trainer/admin/test-notification` | Sends a dummy registration (POST) | Office only |
+
+Hall booking pages are listed in [docs/HALL_BOOKING.md](HALL_BOOKING.md).
+
+The forms are public on purpose — a trainer at the gym gate cannot be expected
+to hold a password. The review pages are separately protected and **fail
+closed**: until you set an admin login they return 503 rather than serve
+trainers' ID numbers and addresses to anyone who finds the URL.
+
+> **Links printed before the forms moved still work.** `/gym`, `/rules`,
+> `/admin`, `/submitted/<ref>` and `/decide/<ref>` all redirect to their
+> `/trainer/...` equivalent, query string intact — so notices already on walls
+> and approval links already sitting in the office inbox keep working.
 
 ---
 
@@ -383,8 +411,105 @@ password can never lose a registration.
 
 > **On free hosting tiers (Render, Railway) the disk is wiped on every redeploy.**
 > Treat the notification email — which carries the full summary and the ID proof
-> attachment — as the durable copy, and download the CSV periodically from
-> `/gym/admin/submissions.csv`.
+> attachment — as the durable copy, download the CSV periodically from
+> `/trainer/admin/submissions.csv`, and switch on the Google Sheet below.
+
+---
+
+## 6b. The Google Sheet history (free, 10 minutes)
+
+Every registration **and** every hall booking can be mirrored into one Google
+Sheet you own, with a tab for each. That sheet is the durable history: unlike
+the server's disk, it survives redeploys, and the office can open it on a phone
+like any other spreadsheet.
+
+Rows are **updated, not duplicated** — the same reference is written again when
+a payment is reported or the office approves, so each registration is one live
+line showing where it stands.
+
+There is no Google API key, no service account and no OAuth involved. You paste
+a short script into your own sheet and the form posts to it.
+
+### Steps
+
+1. Open <https://sheets.new> and name the sheet, e.g. *Silicon Bay — form history*.
+2. **Extensions → Apps Script**. Delete whatever is in the editor.
+3. Paste this in:
+
+   ```javascript
+   // Receives one record from the society forms and writes it into the tab
+   // named in the payload, updating the row with the same reference if it is
+   // already there. Nothing else is exposed: this only ever appends or updates
+   // rows in this one spreadsheet.
+   function doPost(e) {
+     var payload = JSON.parse(e.postData.contents);
+     var row = payload.row || {};
+     var keyName = payload.key || 'reference';
+     var book = SpreadsheetApp.getActiveSpreadsheet();
+     var sheet = book.getSheetByName(payload.sheet) || book.insertSheet(payload.sheet);
+     var headers = Object.keys(row);
+
+     // First write to this tab: lay down the header row.
+     if (sheet.getLastRow() === 0) {
+       sheet.appendRow(headers);
+       sheet.setFrozenRows(1);
+     }
+     var existing = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+
+     // A later version of the form may send a column this tab has never seen.
+     headers.forEach(function (name) {
+       if (existing.indexOf(name) === -1) {
+         sheet.getRange(1, existing.length + 1).setValue(name);
+         existing.push(name);
+       }
+     });
+
+     var values = existing.map(function (name) {
+       return row.hasOwnProperty(name) ? row[name] : '';
+     });
+
+     // Same reference as an existing row? Replace it rather than add a second.
+     var keyColumn = existing.indexOf(keyName) + 1;
+     var target = 0;
+     if (keyColumn > 0 && row[keyName] && sheet.getLastRow() > 1) {
+       var keys = sheet.getRange(2, keyColumn, sheet.getLastRow() - 1, 1).getValues();
+       for (var i = 0; i < keys.length; i++) {
+         if (String(keys[i][0]) === String(row[keyName])) { target = i + 2; break; }
+       }
+     }
+     if (target) {
+       sheet.getRange(target, 1, 1, values.length).setValues([values]);
+     } else {
+       sheet.appendRow(values);
+     }
+     return ContentService.createTextOutput('ok');
+   }
+   ```
+
+4. **Deploy → New deployment**. Choose type **Web app**.
+   - *Execute as*: **Me**
+   - *Who has access*: **Anyone**
+
+   "Anyone" is required — the form has no Google login. The URL is the only
+   secret, and the script can do nothing but write rows into this one sheet.
+5. Authorise it when Google asks. On the "Google hasn't verified this app"
+   screen, choose **Advanced → Go to … (unsafe)** — it is your own script.
+6. Copy the **Web app URL** (it ends in `/exec`).
+7. In Render: **Environment → Add Environment Variable**
+   `GYM_SHEETS_WEBHOOK_URL` = that URL. Save; the service redeploys.
+
+### Checking it
+
+Submit a test booking. A **Hall bookings** tab appears with your row; trainer
+registrations land in a **Trainers** tab. To backfill everything submitted
+before you connected the sheet, POST once to
+`/hall/admin/sheet-sync` and `/trainer/admin/sheet-sync` (office login required).
+
+If a row does not appear, the office pages say why — a `403` almost always means
+the deployment was left as "Only myself" rather than "Anyone".
+
+A sheet that is unreachable never costs you a booking: the record is on the
+server's disk and in the notification email before the sheet is even called.
 
 ---
 
@@ -414,6 +539,7 @@ password can never lose a registration.
 | `GYM_ADMIN_USERNAME` | falls back to `RTU_AUTH_USERNAME` | Login for the review pages |
 | `GYM_ADMIN_PASSWORD` | falls back to `RTU_AUTH_PASSWORD` | Password for the review pages |
 | `GYM_UPI_ID` | — | Society UPI ID; setting it switches on fee collection |
+| `GYM_SHEETS_WEBHOOK_URL` | — | Apps Script web app URL; switches on the Google Sheet history (§6b) |
 | `GYM_UPI_PAYEE_NAME` | `Silicon Bay Society` | Payee name shown in the UPI app |
 | `GYM_PUBLIC_URL` | derived from the request | Pin the URL the QR encodes |
 | `GYM_SUBMIT_COOLDOWN` | `20` | Seconds between submissions from one IP |
@@ -427,21 +553,26 @@ Mounted on the main app (the normal case):
 
 ```bash
 uvicorn app:app --reload --port 8000
-# form:   http://localhost:8000/gym/
-# poster: http://localhost:8000/gym/poster
+# chooser: http://localhost:8000/gym/
+# trainer: http://localhost:8000/gym/trainer/
+# hall:    http://localhost:8000/gym/hall/
+# poster:  http://localhost:8000/gym/poster
 ```
 
-Standalone, with no part of the RTU benchmarking tool involved:
+Standalone, with no part of the RTU benchmarking tool involved — this is what
+the deployed service runs:
 
 ```bash
 uvicorn gymform.standalone:app --host 0.0.0.0 --port 8000
-# form is then at the site root: http://localhost:8000/
+# chooser: http://localhost:8000/
+# trainer: http://localhost:8000/trainer/
+# hall:    http://localhost:8000/hall/
 ```
 
 Tests:
 
 ```bash
-pytest tests/test_gym_form.py
+pytest tests/test_gym_form.py tests/test_hall_form.py tests/test_portal.py
 ```
 
 ---

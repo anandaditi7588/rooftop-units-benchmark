@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}{{ society_name }} — choose a form{% endblock %}
+{% block header_title %}What would you like to do?{% endblock %}
+
+{% block content %}
+
+<div class="card card-lead">
+  <h1>Welcome to {{ society_name }}</h1>
+  <p class="lead" style="margin-bottom:0">
+    Two things can be done online. Tap the one you need — each form takes a
+    couple of minutes, and the society office is notified the moment you submit.
+  </p>
+</div>
+
+<div class="choice-grid">
+  <a class="choice" href="{{ base }}{{ hall_path }}/">
+    <div class="choice-icon">🎉</div>
+    <div class="choice-title">Book a hall or lawn</div>
+    <p class="choice-desc">
+      Reserve the Conference Hall, the Party Lawn or the Community Hall for a
+      birthday, get-together, pooja or family function. You will see straight
+      away whether your date and time are free.
+    </p>
+    <span class="choice-go">Book an amenity →</span>
+  </a>
+
+  <a class="choice" href="{{ base }}{{ trainer_path }}/">
+    <div class="choice-icon">🏋️</div>
+    <div class="choice-title">Register as a personal trainer</div>
+    <p class="choice-desc">
+      Training a resident in the society gym? Every trainer must register with
+      the office first — your details, ID proof, client list and the gym rules.
+    </p>
+    <span class="choice-go">Register as a trainer →</span>
+  </a>
+</div>
+
+<div class="card">
+  <h2>Before you start</h2>
+  <ul class="small muted" style="margin-bottom:0">
+    <li>Both forms are for {{ society_name }} residents and their trainers only.</li>
+    <li>Nothing is confirmed until the society office approves it — you will get
+      an email and a WhatsApp message either way.</li>
+    <li>Read the rules first if you would like:
+      <a href="{{ base }}{{ hall_path }}/rules">amenity use</a> ·
+      <a href="{{ base }}{{ trainer_path }}/rules">gym for trainers</a>.
+    </li>
+    <li>Already booked something? Check
+      <a href="{{ base }}{{ hall_path }}/calendar">which dates are taken</a>.</li>
+  </ul>
+</div>
+
+{% endblock %}

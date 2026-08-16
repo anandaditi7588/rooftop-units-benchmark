@@ -88,6 +88,52 @@ def _csv_row(record: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
+# Column titles for the Google Sheet. The CSV keeps its machine-ish names for
+# anything that reads it programmatically; the sheet is read by people.
+SHEET_HEADERS: dict[str, str] = {
+    "reference": "Reference",
+    "submitted_at": "Submitted",
+    "trainer_name": "Trainer",
+    "mobile": "Mobile",
+    "whatsapp": "WhatsApp",
+    "email": "Email",
+    "id_type": "ID type",
+    "id_number": "ID number",
+    "address": "Address",
+    "emergency_contact_name": "Emergency contact",
+    "emergency_contact_mobile": "Emergency number",
+    "client_count": "Clients",
+    "monthly_fee_inr": "Monthly fee (INR)",
+    "clients": "Client list",
+    "outside_hours_informed": "Outside gym hours",
+    "outside_hours_approved_by": "Approval from",
+    "outside_hours_approval_mode": "Approval taken by",
+    "outside_hours_note": "Approval note",
+    "committee_approval_reference": "Committee reference",
+    "declaration_signature": "Signed by",
+    "declaration_place": "Place",
+    "id_proof_filename": "ID proof file",
+    "all_rules_acknowledged": "All rules accepted",
+    "payment_upi_reference": "UPI reference",
+    "payment_reported_at": "Payment reported",
+    "status": "Status",
+    "decided_at": "Decided at",
+}
+
+SHEET_NAME = "Trainers"
+
+
+def sheet_row(record: dict[str, Any]) -> dict[str, Any]:
+    """The Google Sheet view of one registration.
+
+    Same content as the CSV row, under headings the office can read. Written
+    again on every status change, keyed on the reference, so the sheet holds
+    one live line per registration rather than a pile of revisions.
+    """
+    row = _csv_row(record)
+    return {SHEET_HEADERS.get(key, key): row.get(key, "") for key in CSV_COLUMNS}
+
+
 def save_submission(submission: Submission) -> dict[str, Any]:
     """Append the submission to both files. Returns the stored record."""
     ensure_dirs()

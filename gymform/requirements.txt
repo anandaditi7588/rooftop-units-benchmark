@@ -1,7 +1,8 @@
-# Dependencies for the trainer registration form ONLY.
+# Dependencies for the society's online forms ONLY — the chooser (portal/),
+# trainer registration (gymform/) and hall booking (hallform/).
 #
-# The form shares this repository with the RTU benchmarking tool but none of
-# its code, so it does not need that tool's heavy stack (pandas, PyMuPDF,
+# They share this repository with the RTU benchmarking tool but none of its
+# code, so they do not need that tool's heavy stack (pandas, PyMuPDF,
 # scikit-learn, pdfplumber...). Installing just this file keeps the deployed
 # service small enough to run comfortably on a free hosting tier — which the
 # full stack does not.
@@ -13,7 +14,7 @@ fastapi>=0.115.0
 uvicorn[standard]>=0.30.6
 jinja2>=3.1.4
 python-multipart>=0.0.9      # parses the multipart form (the ID proof upload)
-requests>=2.32.3             # WhatsApp API calls (Twilio / Meta)
-qrcode[pil]>=7.4.2           # the "scan to register" QR code
+requests>=2.32.3             # Brevo, WhatsApp and Google Sheet calls
+qrcode[pil]>=7.4.2           # the "scan me" QR code on the printed notice
 
 # Email uses the standard library's smtplib — nothing to install.

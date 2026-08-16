@@ -464,3 +464,125 @@ input:focus, select:focus, textarea:focus {
 .btn-approve:hover { background: #0c7350; }
 .btn-reject { background: #fff; color: var(--danger); border-color: var(--danger); }
 .btn-reject:hover { background: var(--danger-soft); }
+
+/* ---------- amenity booking: venue and slot pickers ---------- */
+
+.venue-list { display: grid; gap: 10px; }
+
+.venue {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 15px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+  background: #fff;
+  transition: border-color .12s, background .12s;
+}
+
+.venue:hover { border-color: var(--line-strong); }
+
+.venue.is-selected {
+  border-color: var(--brand);
+  background: #f5f9fd;
+  box-shadow: inset 0 0 0 1px var(--brand);
+}
+
+.venue input[type="radio"] { margin-top: 3px; width: 20px; height: 20px; flex: none; }
+
+.venue-body { display: block; }
+.venue-name { display: block; font-weight: 700; font-size: 15px; }
+.venue-meta { display: block; font-size: 13px; color: var(--ink-soft); margin-top: 2px; }
+
+.venue-prices { display: block; margin-top: 7px; }
+
+.venue-price {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 9px;
+  margin: 0 6px 4px 0;
+  border-radius: 999px;
+  background: #eef3f9;
+  color: var(--brand);
+}
+
+.venue-note {
+  display: block;
+  font-size: 12px;
+  color: var(--warn);
+  margin-top: 5px;
+}
+
+.slot-choices { display: flex; flex-wrap: wrap; gap: 10px; }
+
+.slot-choice {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex: 1 1 160px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 14px;
+  background: #fff;
+}
+
+.slot-choice.is-selected {
+  border-color: var(--brand);
+  background: #f5f9fd;
+  box-shadow: inset 0 0 0 1px var(--brand);
+}
+
+.slot-choice input[type="radio"] { width: 20px; height: 20px; flex: none; }
+
+input[type="date"], input[type="number"] {
+  width: 100%;
+  padding: 13px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  font-size: 16px;
+  font-family: inherit;
+  color: var(--ink);
+  background: #fff;
+}
+
+/* ---------- the chooser landing page ---------- */
+
+.choice-grid { display: grid; gap: 16px; margin: 20px 0; }
+
+.choice {
+  display: block;
+  padding: 22px 22px 20px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  text-decoration: none;
+  color: inherit;
+  transition: transform .12s, box-shadow .12s, border-color .12s;
+}
+
+.choice:hover, .choice:focus-visible {
+  transform: translateY(-2px);
+  border-color: var(--brand);
+  box-shadow: 0 2px 6px rgba(20, 40, 70, .1), 0 14px 32px rgba(20, 40, 70, .1);
+}
+
+.choice-icon { font-size: 34px; line-height: 1; }
+.choice-title { font-size: 19px; font-weight: 700; margin: 10px 0 4px; }
+.choice-desc { font-size: 14px; color: var(--ink-soft); margin: 0; }
+
+.choice-go {
+  display: inline-block;
+  margin-top: 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--brand);
+}
+
+@media (min-width: 640px) {
+  .choice-grid { grid-template-columns: 1fr 1fr; }
+}

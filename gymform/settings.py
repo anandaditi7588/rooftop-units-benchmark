@@ -20,6 +20,11 @@ SUBMISSIONS_JSONL: Path = DATA_DIR / "submissions.jsonl"
 SUBMISSIONS_CSV: Path = DATA_DIR / "submissions.csv"
 PAYMENTS_JSONL: Path = DATA_DIR / "payments.jsonl"
 APPROVALS_JSONL: Path = DATA_DIR / "approvals.jsonl"
+# Hall bookings keep their own files alongside the trainer registrations.
+BOOKINGS_JSONL: Path = DATA_DIR / "bookings.jsonl"
+BOOKINGS_CSV: Path = DATA_DIR / "bookings.csv"
+BOOKING_APPROVALS_JSONL: Path = DATA_DIR / "booking_approvals.jsonl"
+BOOKING_PAYMENTS_JSONL: Path = DATA_DIR / "booking_payments.jsonl"
 ID_PROOF_DIR: Path = DATA_DIR / "id_proofs"
 
 TEMPLATES_DIR: Path = Path(__file__).resolve().parent / "templates"
@@ -124,6 +129,13 @@ class GymFormSettings:
     upi_payee_name: str = field(
         default_factory=lambda: _env("GYM_UPI_PAYEE_NAME", "Silicon Bay Society"))
 
+    # --- Google Sheet archive ---------------------------------------------
+    # Apps Script web app URL. Every confirmed registration and booking is
+    # appended there, which is the durable history — the server's own disk is
+    # wiped on redeploy of a free instance. See docs/GYM_FORM.md.
+    sheets_webhook_url: str = field(
+        default_factory=lambda: _env("GYM_SHEETS_WEBHOOK_URL"))
+
     # --- Misc -------------------------------------------------------------
     # Absolute URL the QR code should point at, e.g.
     # https://silicon-bay.onrender.com/gym. Falls back to RENDER_EXTERNAL_URL,
@@ -139,6 +151,10 @@ class GymFormSettings:
         default_factory=lambda: _env_int("GYM_SUBMIT_COOLDOWN", 20))
     max_id_proof_bytes: int = field(
         default_factory=lambda: _env_int("GYM_MAX_ID_PROOF_BYTES", 5 * 1024 * 1024))
+
+    @property
+    def sheets_enabled(self) -> bool:
+        return bool(self.sheets_webhook_url)
 
     @property
     def payments_enabled(self) -> bool:

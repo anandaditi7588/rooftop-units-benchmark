@@ -1003,3 +1003,16 @@ def notify_decision(
         results.append(_send_whatsapp(settings, whatsapp_text, to_number=f"91{trainer_whatsapp}"))
 
     return results
+
+
+
+# ---------------------------------------------------------------------------
+# Shared senders
+# ---------------------------------------------------------------------------
+# The hall booking module sends through exactly these, so both forms inherit
+# the same provider selection, the same failure reporting and the same rule
+# that a delivery problem never loses a submission.
+
+send_email = _send_email
+send_whatsapp = _send_whatsapp
+html_escape = _html_escape

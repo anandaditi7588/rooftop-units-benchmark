@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}{{ decision|capitalize }} {{ record.resident_name }} — {{ society_name }}{% endblock %}
+{% block header_title %}Confirm your decision{% endblock %}
+
+{% block content %}
+
+<div class="card card-lead">
+  <h1>
+    {% if decision == 'approved' %}Confirm{% else %}Reject{% endif %}
+    this booking?
+  </h1>
+
+  {% if record.status != 'pending' %}
+  <div class="alert alert-warn">
+    This booking is already marked
+    <strong>{{ 'confirmed' if record.status == 'approved' else 'not confirmed' }}</strong>.
+    Continuing will replace that decision.
+  </div>
+  {% endif %}
+
+  <table class="data-table" style="margin-top:14px">
+    <tr><th>Resident</th><td>{{ record.resident_name }} (Flat {{ record.flat_number }})</td></tr>
+    <tr><th>Amenity</th><td>{{ record.venue_name }}</td></tr>
+    <tr><th>Date &amp; time</th><td>{{ record.when_label }}</td></tr>
+    <tr><th>Occasion</th><td>{{ record.occasion }}
+      {%- if record.occasion_detail %} — {{ record.occasion_detail }}{% endif %}</td></tr>
+    <tr><th>Persons</th><td>{{ record.expected_persons }}</td></tr>
+    <tr><th>Mobile</th><td>+91 {{ record.mobile }}</td></tr>
+    <tr><th>Charge</th><td>₹{{ "{:,}".format(record.charge_inr) }}
+      <span class="small muted">cash, one day before</span></td></tr>
+    <tr><th>Charge reported paid</th>
+      <td>
+        {% if record.payment %}
+        UPI reference <strong>{{ record.payment.upi_reference }}</strong>
+        <div class="small muted">Resident's own entry — check it against the society account.</div>
+        {% else %}
+        <span class="pill pill-warn">Nothing reported</span>
+        <div class="small muted">Normal — the rules ask for cash the day before.</div>
+        {% endif %}
+      </td>
+    </tr>
+    <tr><th>Reference</th><td>{{ record.reference }}</td></tr>
+  </table>
+
+  {% if decision == 'approved' %}
+  <div class="alert alert-warn" style="margin-top:16px">
+    Confirming reserves the amenity for this resident and blocks the slot for
+    everyone else. They are told immediately by email and WhatsApp.
+  </div>
+  {% else %}
+  <div class="alert alert-warn" style="margin-top:16px">
+    Rejecting releases the slot, so another resident can book that time.
+  </div>
+  {% endif %}
+
+  <form method="post" action="{{ base }}/decide/{{ record.reference }}">
+    <input type="hidden" name="decision" value="{{ decision }}">
+    <input type="hidden" name="token" value="{{ token }}">
+    <div class="field">
+      <label for="note">Note for the resident (optional)</label>
+      <input type="text" id="note" name="note"
+             placeholder="{% if decision == 'approved' %}e.g. Please collect the key from the office{% else %}e.g. Already booked for a society function{% endif %}">
+    </div>
+    <button type="submit"
+            class="btn btn-block btn-lg {% if decision == 'approved' %}btn-approve{% else %}btn-reject{% endif %}">
+      Yes — {% if decision == 'approved' %}confirm{% else %}reject{% endif %} and tell the resident
+    </button>
+  </form>
+
+  <p class="small muted" style="margin-top:14px;margin-bottom:0">
+    Nothing has changed yet. This only happens when you press the button above.
+  </p>
+</div>
+
+<p style="text-align:center;margin:20px 0 0">
+  <a class="btn btn-ghost" href="{{ base }}/admin">Open the full office page</a>
+</p>
+
+{% endblock %}

@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% block title %}Booking requested — {{ society_name }}{% endblock %}
+{% block header_title %}Booking requested{% endblock %}
+
+{% block content %}
+
+{% if payment_just_reported %}
+<div class="alert alert-ok" style="margin-top:20px">
+  <strong>Thank you — your payment reference has been recorded</strong> and sent to
+  the society office. They will confirm it against the society account.
+</div>
+{% endif %}
+
+<div class="card card-lead">
+  <h1>Thank you, {{ record.resident_name }}.</h1>
+  <p class="lead">
+    Your booking request has been recorded and sent to the {{ society_name }} office.
+    The slot is held for you — nobody else can book it while your request is open.
+  </p>
+
+  <table class="data-table" style="margin-top:14px">
+    <tr><th>Reference</th><td><strong>{{ record.reference }}</strong></td></tr>
+    <tr><th>Amenity</th><td>{{ record.venue_name }}</td></tr>
+    <tr><th>Date &amp; time</th><td>{{ record.when_label }}</td></tr>
+    <tr><th>Occasion</th><td>{{ record.occasion }}
+      {%- if record.occasion_detail %} — {{ record.occasion_detail }}{% endif %}</td></tr>
+    <tr><th>Persons</th><td>{{ record.expected_persons }}</td></tr>
+    <tr><th>Charge</th><td>₹{{ "{:,}".format(record.charge_inr) }}
+      <span class="small muted">cash, one day before</span></td></tr>
+    <tr><th>Security deposit</th><td>₹{{ "{:,}".format(record.security_deposit_inr) }}
+      <span class="small muted">refundable, by cheque</span></td></tr>
+  </table>
+
+  {% if record.status == 'approved' %}
+  <div class="alert alert-ok" style="margin-top:14px">
+    <strong>Confirmed by the society office.</strong> The amenity is reserved for you.
+    {% if record.approval.note %}<br><em>{{ record.approval.note }}</em>{% endif %}
+  </div>
+  {% elif record.status == 'rejected' %}
+  <div class="alert alert-danger" style="margin-top:14px">
+    <strong>Not confirmed.</strong> Please contact the society office — they can tell
+    you which dates are free.
+    {% if record.approval.note %}<br><em>{{ record.approval.note }}</em>{% endif %}
+  </div>
+  {% else %}
+  <div class="alert alert-warn" style="margin-top:14px">
+    <strong>Awaiting office confirmation.</strong> You will get an email and a
+    WhatsApp message as soon as the office confirms. Please do not make final
+    arrangements until then.
+  </div>
+  {% endif %}
+
+  <p class="hint" style="margin-top:12px">
+    Keep this reference — quote it when you follow up with the society office.
+    You can revisit this page any time to check your status.
+  </p>
+</div>
+
+{% if payment_enabled %}
+<div class="card" id="payment">
+  <h2>Pay the booking charge online (optional)</h2>
+
+  {% if record.payment %}
+  <div class="alert alert-ok" style="margin-top:14px">
+    <strong>Payment reported.</strong>
+    UPI reference <strong>{{ record.payment.upi_reference }}</strong>, recorded on
+    {{ record.payment.reported_at[:10] }}. The society office will match it against
+    the society account and confirm.
+  </div>
+  {% else %}
+
+  {% if payment_error %}<div class="alert alert-danger">{{ payment_error }}</div>{% endif %}
+
+  <p class="hint">
+    Rule 3 asks for cash one day before the function. If you would rather pay now,
+    you can — the ₹{{ "{:,}".format(security_deposit_inr) }} security deposit is
+    still by cheque either way.
+  </p>
+
+  <p style="margin:16px 0 6px">
+    <a class="btn btn-primary btn-block btn-lg" href="{{ upi_uri }}">
+      Pay ₹{{ "{:,}".format(record.charge_inr) }} with UPI
+    </a>
+  </p>
+  <p class="small muted" style="text-align:center;margin:0 0 18px">
+    Opens PhonePe, Google Pay, Paytm or any UPI app with the amount already filled in.
+  </p>
+
+  <div class="qr-card" style="border-top:1px solid var(--line);padding-top:18px">
+    <p class="small muted" style="margin-bottom:10px">
+      On a computer, or paying from another phone? Scan this:
+    </p>
+    <img src="{{ base }}/upi-qr/{{ record.reference }}.png" alt="UPI payment QR code"
+         style="width:200px;max-width:60vw;height:auto">
+    <p class="small muted" style="margin-top:10px">
+      Or pay directly to <strong>{{ upi_id }}</strong> ({{ upi_payee_name }})<br>
+      Please put <strong>{{ record.reference }}</strong> in the payment note.
+    </p>
+  </div>
+
+  <form method="post" action="{{ base }}/payment/{{ record.reference }}"
+        style="border-top:1px solid var(--line);margin-top:18px;padding-top:18px">
+    <div class="field">
+      <label for="upi_reference">After paying, enter the UPI reference number</label>
+      <input type="text" id="upi_reference" name="upi_reference"
+             placeholder="e.g. 412345678901" required>
+      <div class="hint" style="margin-bottom:0">
+        Your payment app shows this as the UPI transaction ID, UTR or reference
+        number. It lets the office match your payment in the society's account.
+      </div>
+    </div>
+    <button type="submit" class="btn btn-ghost btn-block">I have paid — record it</button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Notification status</h2>
+  <p class="hint">Who has been told about your booking.</p>
+
+  {% if deliveries %}
+  <table class="data-table">
+    {% for delivery in deliveries %}
+    <tr>
+      <th>
+        {% if delivery.channel == 'email' %}Society office (email)
+        {% elif delivery.channel == 'email_trainer' %}Your copy (email)
+        {% else %}Society office (WhatsApp){% endif %}
+      </th>
+      <td>
+        {% if delivery.ok %}
+          <span class="pill pill-ok">Sent</span>
+        {% else %}
+          <span class="pill pill-warn">Not sent</span>
+        {% endif %}
+        <div class="small muted">{{ delivery.detail }}</div>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted small">No delivery information available for this reference.</p>
+  {% endif %}
+
+  {% if whatsapp_link %}
+  <p class="hint" style="margin-top:14px">
+    Automatic WhatsApp delivery is not switched on yet. Tap below to send the same
+    summary to the society office from your own WhatsApp.
+  </p>
+  <a class="btn btn-whatsapp btn-block" href="{{ whatsapp_link }}" target="_blank" rel="noopener">
+    Send this booking on WhatsApp
+  </a>
+  {% endif %}
+
+  <p class="small muted" style="margin-top:16px;margin-bottom:0">
+    Your booking is saved on the society server whether or not these messages were
+    delivered. If nothing arrives, contact the office quoting
+    {{ record.reference }}{% if office_email %} or write to {{ office_email }}{% endif %}.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Before your function</h2>
+  <ul class="small muted">
+    <li>Pay ₹{{ "{:,}".format(record.charge_inr) }} in cash one day before — it goes to the society's cultural fund.</li>
+    <li>Give the refundable security deposit of ₹{{ "{:,}".format(record.security_deposit_inr) }} by cheque.</li>
+    <li>Chairs, tables and guest parking are your responsibility.</li>
+    <li>Clean the amenity, utensils, tiles and toilets afterwards — the cleaning cost is deducted from the deposit otherwise.</li>
+    <li>Any breakage or damage is charged at actual, against the vendor's quotation.</li>
+    <li>Keep within {{ booking_hours_text }} and within {{ record.expected_persons }} persons as declared.</li>
+    <li>Switch off the lights and fans when the function is over.</li>
+  </ul>
+</div>
+
+<p style="text-align:center;margin:24px 0 0">
+  <a class="btn btn-ghost" href="{{ base }}/">Make another booking</a>
+</p>
+
+{% endblock %}
