@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}{{ decision|capitalize }} {{ record.trainer_name }} — {{ society_name }}{% endblock %}
+{% block header_title %}Confirm your decision{% endblock %}
+
+{% block content %}
+
+<div class="card card-lead">
+  <h1>
+    {% if decision == 'approved' %}Approve{% else %}Reject{% endif %}
+    {{ record.trainer_name }}?
+  </h1>
+
+  {% if record.status != 'pending' %}
+  <div class="alert alert-warn">
+    This registration is already marked
+    <strong>{{ 'approved' if record.status == 'approved' else 'not approved' }}</strong>.
+    Continuing will replace that decision.
+  </div>
+  {% endif %}
+
+  <table class="data-table" style="margin-top:14px">
+    <tr><th>Reference</th><td>{{ record.reference }}</td></tr>
+    <tr><th>Mobile</th><td>+91 {{ record.mobile }}</td></tr>
+    <tr><th>Clients</th><td>{{ record.client_count }}</td></tr>
+    <tr><th>Monthly fee</th><td>₹{{ "{:,}".format(record.monthly_fee_inr) }}</td></tr>
+    <tr><th>Fee reported paid</th>
+      <td>
+        {% if record.payment %}
+        UPI reference <strong>{{ record.payment.upi_reference }}</strong>
+        <div class="small muted">Trainer's own entry — check it against the bank statement.</div>
+        {% else %}
+        <span class="pill pill-warn">Nothing reported</span>
+        {% endif %}
+      </td>
+    </tr>
+  </table>
+
+  {% if decision == 'approved' %}
+  <div class="alert alert-warn" style="margin-top:16px">
+    Approve only once the amenity fee is visible in the society account. The
+    trainer is told immediately, and security will admit them.
+  </div>
+  {% endif %}
+
+  <form method="post" action="{{ base }}/decide/{{ record.reference }}">
+    <input type="hidden" name="decision" value="{{ decision }}">
+    <input type="hidden" name="token" value="{{ token }}">
+    <div class="field">
+      <label for="note">Note for the trainer (optional)</label>
+      <input type="text" id="note" name="note"
+             placeholder="{% if decision == 'approved' %}e.g. Fee received 16 Aug{% else %}e.g. Fee not received yet{% endif %}">
+    </div>
+    <button type="submit"
+            class="btn btn-block btn-lg {% if decision == 'approved' %}btn-approve{% else %}btn-reject{% endif %}">
+      Yes — {% if decision == 'approved' %}approve{% else %}reject{% endif %} and tell the trainer
+    </button>
+  </form>
+
+  <p class="small muted" style="margin-top:14px;margin-bottom:0">
+    Nothing has changed yet. This only happens when you press the button above.
+  </p>
+</div>
+
+<p style="text-align:center;margin:20px 0 0">
+  <a class="btn btn-ghost" href="{{ base }}/admin">Open the full office page</a>
+</p>
+
+{% endblock %}

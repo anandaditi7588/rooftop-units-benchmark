@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Decision recorded — {{ society_name }}{% endblock %}
+{% block header_title %}Decision recorded{% endblock %}
+
+{% block content %}
+
+<div class="card card-lead">
+  {% if record.status == 'approved' %}
+  <div class="alert alert-ok">
+    <strong>{{ record.trainer_name }} is approved.</strong>
+    They have been told by email{% if record.whatsapp %} and WhatsApp{% endif %},
+    and may now train their listed clients.
+  </div>
+  {% else %}
+  <div class="alert alert-danger">
+    <strong>{{ record.trainer_name }} has been rejected.</strong>
+    They have been told to contact the society office before coming to the gym.
+  </div>
+  {% endif %}
+
+  <p class="small muted" style="margin-bottom:0">
+    Reference {{ record.reference }}. Tell the security desk to admit approved
+    trainers only — that is what actually keeps an unpaid trainer out of the gym.
+  </p>
+</div>
+
+<p style="text-align:center;margin:20px 0 0">
+  <a class="btn btn-ghost" href="{{ base }}/admin">See all registrations</a>
+</p>
+
+{% endblock %}

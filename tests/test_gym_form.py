@@ -617,7 +617,7 @@ async def test_sending_never_runs_on_the_event_loop_thread(tmp_path, monkeypatch
     loop_thread = threading.current_thread()
     ran_on: dict[str, threading.Thread] = {}
 
-    def record_thread(settings, submission):
+    def record_thread(settings, submission, base_url=""):
         ran_on["notify"] = threading.current_thread()
         return []
 
@@ -1067,3 +1067,165 @@ def test_head_requests_are_answered(client, path):
 def test_health_response_is_small(client):
     """It is polled every few minutes; there is no reason for it to be big."""
     assert len(client.get("/gym/health").content) < 512
+
+
+# ---------------------------------------------------------------------------
+# Deciding straight from the office email
+# ---------------------------------------------------------------------------
+
+def _decide_links(client, monkeypatch, reference=None):
+    """The Approve/Reject URLs the office email would carry."""
+    from gymform import tokens
+    return {
+        d: f"/gym/decide/{reference}?d={d}&t={tokens.make_token(reference, d)}"
+        for d in ("approved", "rejected")
+    }
+
+
+def test_office_email_carries_approve_and_reject_buttons(client, monkeypatch):
+    posts: list[dict] = []
+
+    class Reply:
+        ok = True
+        status_code = 201
+        text = "{}"
+
+    monkeypatch.setattr("gymform.notify.requests.post",
+                        lambda url, json=None, **k: (posts.append(json), Reply())[1])
+    monkeypatch.setenv("GYM_BREVO_API_KEY", "xkeysib-test")
+    monkeypatch.setenv("GYM_ADMIN_PASSWORD", "secret")
+
+    reference = _submit_and_get_reference(client)
+    office_html = posts[0]["htmlContent"]
+
+    assert f"/decide/{reference}?d=approved" in office_html
+    assert f"/decide/{reference}?d=rejected" in office_html
+    assert "nothing changes when you click" in office_html.lower()
+
+
+def test_no_buttons_without_a_signing_secret(client, monkeypatch):
+    """Unsigned links would let anyone approve; leave them out instead."""
+    posts: list[dict] = []
+
+    class Reply:
+        ok = True
+        status_code = 201
+        text = "{}"
+
+    monkeypatch.setattr("gymform.notify.requests.post",
+                        lambda url, json=None, **k: (posts.append(json), Reply())[1])
+    monkeypatch.setenv("GYM_BREVO_API_KEY", "xkeysib-test")
+    for name in ("GYM_DECISION_SECRET", "GYM_ADMIN_PASSWORD", "RTU_AUTH_PASSWORD"):
+        monkeypatch.delenv(name, raising=False)
+
+    _submit_and_get_reference(client)
+    assert "/decide/" not in posts[0]["htmlContent"]
+
+
+def test_clicking_the_link_does_not_decide_anything(client, monkeypatch):
+    """Mail scanners follow links before a person sees them.
+
+    If the GET decided, a spam filter opening the email would approve the
+    trainer. The click may only *show* the decision; a POST commits it.
+    """
+    monkeypatch.setenv("GYM_ADMIN_PASSWORD", "secret")
+    reference = _submit_and_get_reference(client)
+    links = _decide_links(client, monkeypatch, reference)
+
+    page = client.get(links["approved"])
+    assert page.status_code == 200
+    assert "Approve" in page.text
+    assert "Nothing has changed yet" in page.text
+
+    # Still pending — the visit alone changed nothing.
+    assert "Awaiting office approval" in client.get(f"/gym/submitted/{reference}").text
+
+
+def test_confirming_from_the_email_link_approves_and_tells_the_trainer(client, monkeypatch):
+    sent: list[dict] = []
+
+    class Reply:
+        ok = True
+        status_code = 201
+        text = "{}"
+
+    monkeypatch.setattr("gymform.notify.requests.post",
+                        lambda url, json=None, **k: (sent.append(json), Reply())[1])
+    monkeypatch.setenv("GYM_BREVO_API_KEY", "xkeysib-test")
+    monkeypatch.setenv("GYM_ADMIN_PASSWORD", "secret")
+
+    reference = _submit_and_get_reference(client)
+    from gymform import tokens
+    sent.clear()
+
+    response = client.post(
+        f"/gym/decide/{reference}",
+        data={"decision": "approved", "token": tokens.make_token(reference, "approved"),
+              "note": "Fee received 16 Aug"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+    done = client.get(response.headers["location"])
+    assert "is approved" in done.text
+
+    assert "Approved by the society office" in client.get(
+        f"/gym/submitted/{reference}").text
+
+    # The trainer is told, and the note travels with it.
+    assert sent[0]["to"] == [{"email": "ramesh@example.com"}]
+    assert "Fee received 16 Aug" in sent[0]["textContent"]
+
+
+def test_a_tampered_link_is_refused(client, monkeypatch):
+    """The token binds one decision to one registration."""
+    monkeypatch.setenv("GYM_ADMIN_PASSWORD", "secret")
+    reference = _submit_and_get_reference(client)
+    from gymform import tokens
+
+    reject_token = tokens.make_token(reference, "rejected")
+
+    # Reject token re-pointed at approve.
+    assert client.get(
+        f"/gym/decide/{reference}?d=approved&t={reject_token}").status_code == 403
+    assert client.post(
+        f"/gym/decide/{reference}",
+        data={"decision": "approved", "token": reject_token}).status_code == 403
+    # Made-up token.
+    assert client.get(
+        f"/gym/decide/{reference}?d=approved&t=deadbeefdeadbeefdead").status_code == 403
+    # No token at all.
+    assert client.get(f"/gym/decide/{reference}?d=approved").status_code == 403
+
+    assert "Awaiting office approval" in client.get(f"/gym/submitted/{reference}").text
+
+
+def test_the_decision_also_goes_to_the_trainer_on_whatsapp(client, monkeypatch):
+    calls: list[dict] = []
+
+    class Reply:
+        ok = True
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {"sent": True}
+
+    monkeypatch.setattr("gymform.notify.requests.post",
+                        lambda url, json=None, **k: (calls.append(json), Reply())[1])
+    monkeypatch.setenv("GYM_WHAPI_TOKEN", "whapi-test-token")
+    monkeypatch.setenv("GYM_ADMIN_PASSWORD", "secret")
+
+    reference = _submit_and_get_reference(client)
+    from gymform import tokens
+    calls.clear()
+
+    client.post(f"/gym/decide/{reference}",
+                data={"decision": "approved",
+                      "token": tokens.make_token(reference, "approved")},
+                follow_redirects=False)
+
+    # Goes to the trainer's own number, not the office's.
+    assert calls[0]["to"] == "919876543210"
+    assert "Approved" in calls[0]["body"]
+    assert reference in calls[0]["body"]
