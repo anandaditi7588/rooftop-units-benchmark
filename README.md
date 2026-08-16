@@ -60,15 +60,28 @@ config/
   competitors.json            Add a new competitor here — no code changes
   parameter_synonyms.json     Domain-knowledge synonym groups
   parameter_rules.json        higher/lower-is-better directionality
-gymform/                      Silicon Bay trainer gym-registration form (see §10)
+portal/                       Silicon Bay online forms — the chooser (see §10)
+  web.py                      Landing page, shared QR/poster, mounts both forms
+gymform/                      Trainer gym-registration form, mounted at /trainer
   rules.py                    The society rulebook, fee slabs & gym hours as data
   models.py                   Form model + server-side validation
-  web.py                      Routes, mounted at /gym
-  notify.py                   Email + WhatsApp notifications
+  web.py                      Routes
+  notify.py                   Email + WhatsApp notifications (shared by both forms)
+  settings.py                 Environment snapshot (shared by both forms)
+  sheets.py                   Google Sheet archive (shared by both forms)
   storage.py                  Submissions -> JSONL/CSV on disk
-  templates/ static/          Its own pages and assets (no shared styling)
+  templates/ static/          Pages and assets for both forms
+hallform/                     Hall & amenity booking form, mounted at /hall
+  rules.py                    Venues, charges, capacities & the 11 amenity rules
+  models.py                   Booking model, validation & the double-booking check
+  web.py                      Routes
+  notify.py                   Booking emails, WhatsApp & decision links
+  storage.py                  Bookings -> JSONL/CSV on disk
+  templates/                  Its own pages
 tests/
   test_gym_form.py            Tests for the registration form
+  test_hall_form.py           Tests for the booking form, incl. double booking
+  test_portal.py              Tests for the chooser and the legacy redirects
 Physical_Data.xlsx (project root)   Master benchmark parameter template (Column B)
 data/                         Reserved for any additional data assets you add
 uploads/                      User-uploaded parameter sheets
@@ -311,41 +324,59 @@ see `core/auth.py`. Anyone reaching the URL will get a browser login prompt.
 
 ---
 
-## 10. Silicon Bay Society — personal trainer gym registration form
+## 10. Silicon Bay Society — online forms
 
-This repository also hosts an unrelated second application: an online
-registration form for personal trainers using the Silicon Bay Society gym,
-built from the society's *"Society Gym Rules for Personal Trainers"* document.
-It shares this server but shares no code with the benchmarking tool, and can be
-deployed on its own (`uvicorn gymform.standalone:app`).
+This repository also hosts an unrelated second application: two online forms for
+the Silicon Bay Society, built from the society's own rule documents. They share
+this server but share no code with the benchmarking tool, and can be deployed on
+their own (`uvicorn gymform.standalone:app`).
 
-A trainer scans a QR code at the gym door, the form opens on their phone, they
-fill in their details, ID proof, client list and acknowledge all 15 society
-rules — and the society office is notified by email and WhatsApp the moment
-they submit.
+One printed QR code covers both. Scanning it opens a chooser:
+
+- **Book a hall or lawn** — the Conference Hall, Party Lawn or Community Hall
+  for a birthday, get-together, pooja or family function. The form shows the
+  charges, enforces the capacity and timings, and refuses a slot someone else
+  already holds — naming who holds it, so the resident can pick another date.
+- **Register as a personal trainer** — details, ID proof, client list and all 15
+  gym rules, as the trainer rulebook requires.
+
+Either way the society office is notified by email and WhatsApp the moment
+someone submits, and confirms or rejects with one tap in that email. The
+resident or trainer is then told by email and WhatsApp.
 
 | | |
 |---|---|
-| Form | `https://<your-host>/gym/` |
+| Chooser (what the QR opens) | `https://<your-host>/gym/` |
+| Hall &amp; amenity booking | `https://<your-host>/gym/hall/` |
+| Trainer registration | `https://<your-host>/gym/trainer/` |
 | Printable QR notice | `https://<your-host>/gym/poster` |
-| Registrations received (office only) | `https://<your-host>/gym/admin` |
+| Bookings received (office only) | `https://<your-host>/gym/hall/admin` |
+| Registrations received (office only) | `https://<your-host>/gym/trainer/admin` |
+
+On the standalone deployment these sit at the site root instead of under `/gym`.
 
 **It runs at no cost.** Render's free tier (750 instance hours/month, no card)
-hosts it, Gmail SMTP sends the mail, and WhatsApp has a free route — see
+hosts it, Brevo's free tier sends the mail, and WhatsApp has a free route — see
 [§0 of the guide](docs/GYM_FORM.md) for the full breakdown.
 
-Out of the box the form validates and stores every submission with no
-configuration at all. To switch on email, add `GYM_SMTP_USER` and
-`GYM_SMTP_PASSWORD` (a Gmail **App Password**, not the account password). For
-automatic WhatsApp, `GYM_CALLMEBOT_APIKEY` is free; Twilio and the WhatsApp
-Cloud API are the commercial alternatives. With none of them set, the
-notification email carries a one-tap link that sends the same summary.
+Out of the box both forms validate and store every submission with no
+configuration at all. To switch on email, add `GYM_BREVO_API_KEY` and
+`GYM_EMAIL_FROM` (free hosting blocks outbound SMTP, so an HTTP email API is the
+only route that works there). For automatic WhatsApp, `GYM_WHAPI_TOKEN` or
+`GYM_CALLMEBOT_APIKEY` are free; Twilio and the WhatsApp Cloud API are the
+commercial alternatives. With none of them set, the notification email carries a
+one-tap link that sends the same summary.
+
+Set `GYM_SHEETS_WEBHOOK_URL` to mirror every registration and booking into a
+Google Sheet you own — that sheet is the durable history, because a free
+instance's disk is wiped on every redeploy.
 
 **Set `GYM_ADMIN_USERNAME` and `GYM_ADMIN_PASSWORD` before going live** —
-submissions contain trainers' phone numbers, addresses and government ID
-numbers. Until those are set the review pages return 503 rather than exposing
-that data.
+submissions contain residents' and trainers' phone numbers, addresses and
+government ID numbers. Until those are set the review pages return 503 rather
+than exposing that data.
 
-Full setup guide, including the QR code, storage and every environment
-variable: **[docs/GYM_FORM.md](docs/GYM_FORM.md)**. Start from
-[`.env.example`](.env.example).
+Full setup guides: **[docs/GYM_FORM.md](docs/GYM_FORM.md)** (trainer form, plus
+email, WhatsApp, hosting and the Google Sheet, shared by both) and
+**[docs/HALL_BOOKING.md](docs/HALL_BOOKING.md)** (booking form and double-booking
+rules). Start from [`.env.example`](.env.example).

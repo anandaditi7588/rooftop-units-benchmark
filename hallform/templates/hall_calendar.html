@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Booked dates — {{ society_name }}{% endblock %}
+{% block header_title %}Which dates are taken{% endblock %}
+
+{% block content %}
+
+<div class="card card-lead">
+  <h1>Upcoming bookings</h1>
+  <p class="lead">
+    Everything already booked or requested, so you can pick a date that is free
+    before you fill the form.
+  </p>
+  <p style="margin:14px 0 0">
+    <a class="btn btn-primary" href="{{ base }}/">Book an amenity</a>
+  </p>
+</div>
+
+{% if bookings %}
+<div class="card">
+  <div class="table-scroll">
+    <table class="data-table">
+      <tr>
+        <th>Date</th><th>Time</th><th>Amenity</th><th>Booked by</th><th>Status</th>
+      </tr>
+      {% for booking in bookings %}
+      <tr>
+        <td>{{ format_date(booking.event_date) }}</td>
+        <td>{{ format_time(booking.start_time) }} – {{ format_time(booking.end_time) }}</td>
+        <td>{{ booking.venue_name }}</td>
+        <td>{{ booking.resident_name }}{% if booking.flat_number %}
+          <span class="small muted">(Flat {{ booking.flat_number }})</span>{% endif %}</td>
+        <td>
+          {% if booking.status == 'approved' %}
+          <span class="pill pill-ok">Confirmed</span>
+          {% else %}
+          <span class="pill pill-warn">Requested</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  <p class="small muted" style="margin:14px 0 0">
+    A requested booking still holds the slot — the resident asked first, so it
+    stays theirs until the office decides.
+  </p>
+</div>
+{% else %}
+<div class="card">
+  <p class="muted">
+    Nothing is booked yet. Every amenity is free —
+    <a href="{{ base }}/">go ahead and book one</a>.
+  </p>
+</div>
+{% endif %}
+
+{% endblock %}

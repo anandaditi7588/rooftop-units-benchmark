@@ -35,7 +35,7 @@ from core.config import (
     settings,
 )
 from core.excel_io import read_parameters_from_excel
-from gymform import gym_app
+from portal import portal_app
 from core.job_manager import job_manager
 from core.logging_setup import configure_logging
 from core.pipeline import BenchmarkPipeline
@@ -61,12 +61,13 @@ app.add_middleware(
 )
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-# Silicon Bay Society trainer registration form — an independent sub-app that
-# happens to share this server. Mounted (rather than included as a router) so
-# it sits outside the HTTP Basic gate above: trainers scan a QR code at the gym
-# door and must reach the form without any password. Its own review pages are
-# separately protected — see gymform/admin_auth.py.
-app.mount("/gym", gym_app, name="gym-form")
+# Silicon Bay Society online forms — trainer registration and amenity booking,
+# behind a chooser page. An independent sub-app that happens to share this
+# server. Mounted (rather than included as a router) so it sits outside the
+# HTTP Basic gate above: residents scan a QR code at the gate and must reach
+# the forms without any password. The office review pages are separately
+# protected — see gymform/admin_auth.py.
+app.mount("/gym", portal_app, name="society-forms")
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 

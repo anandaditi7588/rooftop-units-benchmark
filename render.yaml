@@ -1,9 +1,12 @@
-# Render blueprint for the Silicon Bay Society trainer registration form.
+# Render blueprint for the Silicon Bay Society online forms.
 #
-# This deploys the FORM ONLY (gymform/), not the RTU benchmarking tool — the
-# form has no dependency on it, and keeping them apart means this service
-# installs six small packages instead of the benchmarking stack that has
-# previously exhausted the free tier's memory.
+# One service serves both: a chooser page at the site root, personal trainer
+# registration at /trainer, and hall & amenity booking at /hall.
+#
+# This deploys the FORMS ONLY (gymform/, hallform/, portal/), not the RTU
+# benchmarking tool — they have no dependency on it, and keeping them apart
+# means this service installs six small packages instead of the benchmarking
+# stack that has previously exhausted the free tier's memory.
 #
 # To use: Render dashboard -> New -> Blueprint -> pick this repository.
 # Creating an existing service from this file does not touch any service you
@@ -53,6 +56,14 @@ services:
       - key: GYM_SMTP_PASSWORD
         sync: false
 
+      # --- Google Sheet history (optional, recommended) -----------------
+      # Apps Script web app URL. Every registration and hall booking is
+      # mirrored there and updated as its status changes, which is the
+      # durable history — a free instance's disk is wiped on redeploy.
+      # Setup is in docs/GYM_FORM.md section 6b.
+      - key: GYM_SHEETS_WEBHOOK_URL
+        sync: false
+
       # --- Amenity fee collection (optional) ---------------------------
       # The society's UPI ID. Setting it shows a pay button and QR on the
       # confirmation page; payment is reported by the trainer, not verified.
@@ -74,5 +85,6 @@ services:
         sync: false
 
 # The URL encoded in the QR code needs no configuration: Render sets
-# RENDER_EXTERNAL_URL on every web service, and the form reads it. Set
-# GYM_PUBLIC_URL by hand only if you put a custom domain in front.
+# RENDER_EXTERNAL_URL on every web service, and the forms read it. Set
+# GYM_PUBLIC_URL by hand only if you put a custom domain in front — give it the
+# site root, not a form path; each form appends its own.

@@ -19,7 +19,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from gymform import notify, payments, storage, tokens
+from gymform import notify, payments, sheets, storage, tokens
 from gymform.admin_auth import require_admin
 from gymform.models import (
     APPROVAL_MODES,
@@ -90,11 +90,35 @@ def _base_path(request: Request) -> str:
 
 
 def _form_url(request: Request) -> str:
-    """Absolute, public URL of the form — what the QR code encodes."""
+    """Absolute, public URL of this form — what signed email links must use.
+
+    The mount path is always appended, including to a configured public URL:
+    the form no longer sits at the site root (the chooser does), so a decision
+    link built without it would 404 in the office's inbox.
+    """
     configured = get_settings().public_url
-    if configured:
-        return configured.rstrip("/")
-    return str(request.base_url).rstrip("/") + _base_path(request)
+    root = configured.rstrip("/") if configured else str(request.base_url).rstrip("/")
+    return root + _base_path(request)
+
+
+def _sync_sheet(reference: str) -> None:
+    """Mirror one registration into the society's Google Sheet.
+
+    Best effort: the registration is already on disk, and a spreadsheet that is
+    briefly out of date beats showing a trainer an error for a submission that
+    was in fact accepted.
+    """
+    settings = get_settings()
+    if not settings.sheets_enabled:
+        return
+    record = _find_submission(reference)
+    if record is None:
+        return
+    ok, detail = sheets.push_row(
+        settings, storage.SHEET_NAME, storage.sheet_row(record)
+    )
+    if not ok:
+        logger.warning("Gym form: sheet sync failed for %s — %s", reference, detail)
 
 
 def _template_context(request: Request, **extra) -> dict:
@@ -239,6 +263,7 @@ async def submit(request: Request):
         notify.notify_all, settings, submission, _form_url(request)
     )
     _remember_delivery(submission.reference, results)
+    await run_in_threadpool(_sync_sheet, submission.reference)
 
     return RedirectResponse(
         f"{_base_path(request)}/submitted/{submission.reference}", status_code=303
@@ -339,6 +364,7 @@ async def decide_submit(request: Request, reference: str):
     await run_in_threadpool(
         notify.notify_decision, get_settings(), record, decision, note
     )
+    await run_in_threadpool(_sync_sheet, reference)
     return RedirectResponse(
         f"{_base_path(request)}/decide/{reference}/done?d={decision}", status_code=303
     )
@@ -425,6 +451,7 @@ async def report_payment(request: Request, reference: str):
     amount = record.get("monthly_fee_inr", 0)
     await run_in_threadpool(storage.record_payment, reference, upi_reference, amount)
     await run_in_threadpool(notify.notify_payment, settings, record, upi_reference, amount)
+    await run_in_threadpool(_sync_sheet, reference)
 
     return RedirectResponse(f"{base}/submitted/{reference}?paid=1", status_code=303)
 
@@ -516,6 +543,7 @@ async def admin_decision(request: Request, reference: str):
     await run_in_threadpool(
         notify.notify_decision, get_settings(), record, decision, note
     )
+    await run_in_threadpool(_sync_sheet, reference)
     return RedirectResponse(f"{_base_path(request)}/admin#{reference}", status_code=303)
 
 
@@ -532,6 +560,28 @@ def admin_csv():
             "Content-Disposition": 'attachment; filename="gym-trainer-submissions.csv"'
         },
     )
+
+
+@gym_app.post("/admin/sheet-sync", dependencies=[Depends(require_admin)])
+def admin_sheet_sync():
+    """Push every stored registration into the Google Sheet.
+
+    Worth running once after the sheet is first connected, so the history that
+    predates it is not lost.
+    """
+    settings = get_settings()
+    if not settings.sheets_enabled:
+        raise HTTPException(404, "No Google Sheet is configured.")
+    sent, failed = 0, []
+    for record in reversed(storage.load_submissions()):
+        ok, detail = sheets.push_row(
+            settings, storage.SHEET_NAME, storage.sheet_row(record)
+        )
+        if ok:
+            sent += 1
+        else:
+            failed.append({"reference": record.get("reference"), "detail": detail})
+    return {"synced": sent, "failed": failed}
 
 
 @gym_app.get("/admin/id-proof/{reference}", dependencies=[Depends(require_admin)])

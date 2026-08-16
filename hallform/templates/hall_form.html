@@ -1,0 +1,316 @@
+{% extends "base.html" %}
+{% block title %}{{ society_name }} — Hall &amp; Amenity Booking{% endblock %}
+
+{% block content %}
+
+<div class="card card-lead">
+  <h1>Book a society amenity</h1>
+  <p class="lead">
+    The Conference Hall, the Party Lawn and the Community Hall can be booked by
+    residents for personal events. Fill this form — the office is notified
+    immediately and will confirm your booking.
+  </p>
+  <p class="small muted" style="margin-bottom:0">
+    Bookings run <strong>{{ booking_hours_text }}</strong>. Only electricity,
+    light and fan are provided. Fields marked <span class="req">*</span> are required.
+    <a href="{{ base }}/calendar">See which dates are already taken →</a>
+  </p>
+</div>
+
+{% if errors.clash %}
+<div class="alert alert-danger" role="alert">
+  <strong>That slot is already taken.</strong>
+  <div style="margin-top:6px">{{ errors.clash }}</div>
+</div>
+{% endif %}
+
+{% if errors and not (errors|length == 1 and errors.clash) %}
+<div class="alert alert-danger" id="errorSummary" role="alert">
+  <strong>Please fix {{ errors|length }} item{{ 's' if errors|length != 1 else '' }} below.</strong>
+  <ul style="margin:8px 0 0;padding-left:20px">
+    {% for message in errors.values() %}<li>{{ message }}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<form method="post" action="{{ base }}/submit" id="hallForm" novalidate>
+
+  <!-- Bots fill hidden fields; people never see this one. -->
+  <div style="position:absolute;left:-9999px" aria-hidden="true">
+    <label>Website<input type="text" name="website" tabindex="-1" autocomplete="off"></label>
+  </div>
+
+  <!-- ============ 1. Resident ============ -->
+  <section class="card">
+    <div class="section-head">
+      <span class="step">1</span>
+      <h2>Your details</h2>
+    </div>
+    <p class="hint">Rule 1 — the amenities are for residents' own personal events.</p>
+
+    <div class="grid-2">
+      <div class="field {% if errors.resident_name %}has-error{% endif %}">
+        <label for="resident_name">Full name <span class="req">*</span></label>
+        <input type="text" id="resident_name" name="resident_name" autocomplete="name"
+               value="{{ values.resident_name }}" required>
+        {% if errors.resident_name %}<div class="error-text">{{ errors.resident_name }}</div>{% endif %}
+      </div>
+      <div class="field {% if errors.flat_number %}has-error{% endif %}">
+        <label for="flat_number">Flat number <span class="req">*</span></label>
+        <input type="text" id="flat_number" name="flat_number" placeholder="e.g. B-1204"
+               value="{{ values.flat_number }}" required>
+        {% if errors.flat_number %}<div class="error-text">{{ errors.flat_number }}</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="field {% if errors.mobile %}has-error{% endif %}">
+        <label for="mobile">Mobile number <span class="req">*</span></label>
+        <div class="with-prefix">
+          <span class="prefix">+91</span>
+          <input type="tel" id="mobile" name="mobile" inputmode="numeric" maxlength="14"
+                 autocomplete="tel-national" value="{{ values.mobile }}" required>
+        </div>
+        {% if errors.mobile %}<div class="error-text">{{ errors.mobile }}</div>{% endif %}
+      </div>
+      <div class="field {% if errors.whatsapp %}has-error{% endif %}">
+        <label for="whatsapp">WhatsApp number</label>
+        <div class="with-prefix">
+          <span class="prefix">+91</span>
+          <input type="tel" id="whatsapp" name="whatsapp" inputmode="numeric" maxlength="14"
+                 value="{{ values.whatsapp }}" placeholder="Same as mobile">
+        </div>
+        {% if errors.whatsapp %}<div class="error-text">{{ errors.whatsapp }}</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="field {% if errors.email %}has-error{% endif %}" style="margin-bottom:0">
+      <label for="email">Email address <span class="req">*</span></label>
+      <input type="email" id="email" name="email" autocomplete="email"
+             value="{{ values.email }}" required>
+      <div class="hint" style="margin-bottom:0">
+        Your booking confirmation is sent here.
+      </div>
+      {% if errors.email %}<div class="error-text">{{ errors.email }}</div>{% endif %}
+    </div>
+  </section>
+
+  <!-- ============ 2. Amenity ============ -->
+  <section class="card">
+    <div class="section-head">
+      <span class="step">2</span>
+      <h2>Which amenity</h2>
+    </div>
+    <p class="hint">Rule 3 — charges are collected in cash one day before the function.</p>
+
+    {% if errors.venue_key %}<div class="alert alert-danger">{{ errors.venue_key }}</div>{% endif %}
+
+    <div class="venue-list">
+      {% for venue in venues %}
+      <label class="venue {% if values.venue_key == venue.key %}is-selected{% endif %}">
+        <input type="radio" name="venue_key" value="{{ venue.key }}"
+               data-max-persons="{{ venue.max_persons }}"
+               {% if values.venue_key == venue.key %}checked{% endif %}>
+        <span class="venue-body">
+          <span class="venue-name">{{ venue.name }}</span>
+          <span class="venue-meta">{{ venue.location }} · up to {{ venue.max_persons }} persons</span>
+          <span class="venue-prices">
+            {% for slot in venue.slots %}
+            <span class="venue-price">{{ slot.label }} — ₹{{ "{:,}".format(slot.charge_inr) }}</span>
+            {% endfor %}
+          </span>
+          {% for note in venue.notes %}<span class="venue-note">{{ note }}</span>{% endfor %}
+        </span>
+      </label>
+      {% endfor %}
+    </div>
+
+    <div class="field {% if errors.slot_key %}has-error{% endif %}" style="margin-top:16px">
+      <span class="field-label">How long do you need it? <span class="req">*</span></span>
+      <div id="slotChoices" class="slot-choices">
+        <p class="muted small" data-slot-placeholder>Choose an amenity above first.</p>
+      </div>
+      {% if errors.slot_key %}<div class="error-text">{{ errors.slot_key }}</div>{% endif %}
+    </div>
+  </section>
+
+  <!-- ============ 3. When ============ -->
+  <section class="card">
+    <div class="section-head">
+      <span class="step">3</span>
+      <h2>Date &amp; time</h2>
+    </div>
+    <p class="hint">
+      Rule 7 — bookings run {{ booking_hours_text }}. Book at least a day ahead;
+      the charges are collected the day before your function.
+    </p>
+
+    <div class="grid-2">
+      <div class="field {% if errors.event_date %}has-error{% endif %}">
+        <label for="event_date">Date of your function <span class="req">*</span></label>
+        <input type="date" id="event_date" name="event_date" value="{{ values.event_date }}" required>
+        {% if errors.event_date %}<div class="error-text">{{ errors.event_date }}</div>{% endif %}
+      </div>
+      <div class="field {% if errors.start_time %}has-error{% endif %}" id="startTimeField">
+        <label for="start_time">Start time <span class="req">*</span></label>
+        <input type="time" id="start_time" name="start_time"
+               min="{{ booking_day_start }}" max="{{ booking_day_end }}"
+               value="{{ values.start_time }}">
+        <div class="hint" style="margin-bottom:0" id="endTimeHint"></div>
+        {% if errors.start_time %}<div class="error-text">{{ errors.start_time }}</div>{% endif %}
+      </div>
+    </div>
+
+    <!-- Filled in by hall.js from /availability, so a resident learns the slot
+         is taken while they are still choosing rather than after submitting. -->
+    <div class="alert alert-danger" id="clashNotice" hidden style="margin:0 0 14px"></div>
+    <div class="alert alert-ok" id="freeNotice" hidden style="margin:0 0 14px"></div>
+
+    <div class="grid-2">
+      <div class="field {% if errors.occasion %}has-error{% endif %}">
+        <label for="occasion">Occasion <span class="req">*</span></label>
+        <select id="occasion" name="occasion" required>
+          <option value="">Select…</option>
+          {% for occasion in occasions %}
+          <option value="{{ occasion }}" {% if values.occasion == occasion %}selected{% endif %}>{{ occasion }}</option>
+          {% endfor %}
+        </select>
+        {% if errors.occasion %}<div class="error-text">{{ errors.occasion }}</div>{% endif %}
+      </div>
+      <div class="field {% if errors.expected_persons %}has-error{% endif %}">
+        <label for="expected_persons">Persons expected <span class="req">*</span></label>
+        <input type="number" id="expected_persons" name="expected_persons" min="1"
+               inputmode="numeric" value="{{ values.expected_persons }}" required>
+        <div class="hint" style="margin-bottom:0" id="capacityHint"></div>
+        {% if errors.expected_persons %}<div class="error-text">{{ errors.expected_persons }}</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="field" style="margin-bottom:0">
+      <label for="occasion_detail">Anything else about the function</label>
+      <input type="text" id="occasion_detail" name="occasion_detail"
+             value="{{ values.occasion_detail }}"
+             placeholder="Optional — e.g. 60th birthday, catering from outside">
+    </div>
+
+    <div class="fee-box" id="chargeBox" hidden>
+      <div>
+        <div class="small">Booking charge</div>
+        <div class="fee-amount">₹<span id="chargeAmount">0</span></div>
+        <div class="small muted">Cash, one day before</div>
+      </div>
+      <div>
+        <div class="small">Security deposit</div>
+        <div class="fee-amount">₹{{ "{:,}".format(security_deposit_inr) }}</div>
+        <div class="small muted">Refundable, by cheque</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 4. Rules ============ -->
+  <section class="card">
+    <div class="section-head">
+      <span class="step">4</span>
+      <h2>Society rules for amenity use</h2>
+    </div>
+    <p class="hint">
+      Read each rule and tick to accept. All {{ rules|length }} acknowledgements are required.
+    </p>
+
+    {% if errors.acknowledgements %}<div class="alert alert-danger">{{ errors.acknowledgements }}</div>{% endif %}
+
+    {% for rule in rules %}
+    <div class="rule">
+      <div class="rule-head">
+        <span class="rule-number">{{ rule.number }}</span>
+        <span class="rule-title">{{ rule.title }}</span>
+      </div>
+      <div class="rule-body">
+        {% for paragraph in rule.paragraphs %}<p>{{ paragraph }}</p>{% endfor %}
+        {% if rule.bullets %}
+        <ul>{% for bullet in rule.bullets %}<li>{{ bullet }}</li>{% endfor %}</ul>
+        {% endif %}
+      </div>
+      <div class="rule-ack">
+        <label class="check">
+          <input type="checkbox" name="ack_{{ rule.key }}" value="1" data-ack
+                 {% if values.acknowledgements.get(rule.key) %}checked{% endif %}>
+          <span>{{ rule.acknowledgement }}</span>
+        </label>
+      </div>
+    </div>
+    {% endfor %}
+
+    <p class="small muted" id="ackProgress"></p>
+  </section>
+
+  <!-- ============ 5. Declaration ============ -->
+  <section class="card">
+    <div class="section-head">
+      <span class="step">5</span>
+      <h2>Declaration</h2>
+    </div>
+
+    <div class="field {% if errors.declaration_agree %}has-error{% endif %}">
+      <label class="check">
+        <input type="checkbox" name="declaration_agree" value="1"
+               {% if values.declaration_agree %}checked{% endif %}>
+        <span>{{ declaration }}</span>
+      </label>
+      {% if errors.declaration_agree %}<div class="error-text">{{ errors.declaration_agree }}</div>{% endif %}
+    </div>
+
+    <div class="grid-2">
+      <div class="field {% if errors.declaration_signature %}has-error{% endif %}">
+        <label for="declaration_signature">Signature — type your full name <span class="req">*</span></label>
+        <input type="text" id="declaration_signature" name="declaration_signature"
+               value="{{ values.declaration_signature }}" required>
+        {% if errors.declaration_signature %}<div class="error-text">{{ errors.declaration_signature }}</div>{% endif %}
+      </div>
+      <div class="field">
+        <label for="declaration_place">Place</label>
+        <input type="text" id="declaration_place" name="declaration_place"
+               value="{{ values.declaration_place }}" placeholder="Pune">
+      </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary btn-block btn-lg" id="submitBtn">
+      Request this booking
+    </button>
+    <p class="small muted" style="text-align:center;margin:12px 0 0">
+      The slot is held for you as soon as you submit. The office confirms it by
+      email and WhatsApp.
+    </p>
+  </section>
+</form>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  window.HALL_FORM_CONFIG = {
+    base: {{ base|tojson }},
+    venues: [
+      {% for venue in venues %}
+      {
+        key: {{ venue.key|tojson }},
+        name: {{ venue.name|tojson }},
+        maxPersons: {{ venue.max_persons }},
+        slots: [
+          {% for slot in venue.slots %}
+          { key: {{ slot.key|tojson }}, label: {{ slot.label|tojson }},
+            hours: {{ slot.hours }}, charge: {{ slot.charge_inr }} }{{ "," if not loop.last }}
+          {% endfor %}
+        ]
+      }{{ "," if not loop.last }}
+      {% endfor %}
+    ],
+    selectedVenue: {{ values.venue_key|tojson }},
+    selectedSlot: {{ values.slot_key|tojson }},
+    dayStart: {{ booking_day_start|tojson }},
+    dayEnd: {{ booking_day_end|tojson }},
+    ruleCount: {{ rules|length }}
+  };
+</script>
+<script src="{{ base }}/static/hall.js"></script>
+{% endblock %}
