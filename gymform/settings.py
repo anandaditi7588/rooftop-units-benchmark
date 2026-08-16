@@ -25,6 +25,7 @@ BOOKINGS_JSONL: Path = DATA_DIR / "bookings.jsonl"
 BOOKINGS_CSV: Path = DATA_DIR / "bookings.csv"
 BOOKING_APPROVALS_JSONL: Path = DATA_DIR / "booking_approvals.jsonl"
 BOOKING_PAYMENTS_JSONL: Path = DATA_DIR / "booking_payments.jsonl"
+BOOKING_DELETIONS_JSONL: Path = DATA_DIR / "booking_deletions.jsonl"
 ID_PROOF_DIR: Path = DATA_DIR / "id_proofs"
 
 TEMPLATES_DIR: Path = Path(__file__).resolve().parent / "templates"

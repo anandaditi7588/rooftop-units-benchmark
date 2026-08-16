@@ -95,6 +95,8 @@ On the deployed service these sit under `/hall`.
 | `/hall/qr.png` | QR straight to the booking form | Public |
 | `/hall/decide/<ref>` | Confirm / reject, from the office email | Signed link |
 | `/hall/admin` | All bookings received | Office only |
+| `/hall/admin/delete/<ref>` | Remove a wrong booking (POST) | Office only |
+| `/hall/admin/restore/<ref>` | Undo a removal (POST) | Office only |
 | `/hall/admin/bookings.csv` | Same data as a spreadsheet | Office only |
 | `/hall/admin/sheet-sync` | Push every booking to the Sheet (POST) | Office only |
 
@@ -121,7 +123,48 @@ On the deployed service these sit under `/hall`.
 
 ---
 
-## 5. Paying online (optional)
+## 5. Removing a wrong booking
+
+A test entry, a duplicate, or a resident who picked the wrong date — the office
+can strike it off. **Only the office.** There is no route on the public side
+that reaches this: a resident who could delete their own booking could delete
+somebody else's the moment they got hold of a reference, and the reference is
+printed on a confirmation page anyone might see over a shoulder.
+
+On `/hall/admin`, each booking has a folded-away **"⚠ Wrong booking? Remove it"**
+section beneath Confirm and Reject. It asks for a reason, then confirms before
+acting.
+
+What removal does:
+
+- **Frees the slot** — another resident can book that time immediately.
+- **Drops it from the public calendar** and from the office's own list.
+- **Marks the Google Sheet row** `removed`, with the reason in a *Removed
+  because* column.
+- **Tells the resident nothing.** Removal is for entries made in error. If you
+  want the resident to hear that their booking is not happening, use **Reject**
+  instead — that emails and WhatsApps them, and it also frees the slot.
+
+What removal does **not** do:
+
+- **Nothing is erased.** The resident's original submission stays in
+  `bookings.jsonl` exactly as they signed it, and the removal is written
+  alongside it in `booking_deletions.jsonl` with who-when-why. The society can
+  always answer "who took that booking off the list?" — which is the whole
+  reason a booking system gets trusted with the hall.
+
+**Undo.** Removed bookings are hidden until you click **Show N removed**, and
+each one has **Restore this booking**, which puts it back exactly as the
+resident sent it. Restoring is refused — naming who now holds the slot — if
+somebody booked that time while it was free. Freeing a slot means somebody may
+take it, and undo must not quietly double-book the hall.
+
+If you want a booking gone from the spreadsheet entirely, delete that row in
+Google Sheets by hand afterwards. Nothing will write it back.
+
+---
+
+## 6. Paying online (optional)
 
 The rules ask for cash one day before the function, and that remains the
 default. If `GYM_UPI_ID` is set, the confirmation page also offers a UPI button
@@ -134,22 +177,24 @@ against the society account, and every surface says **reported**, not paid. The
 
 ---
 
-## 6. Where bookings are stored
+## 7. Where bookings are stored
 
 - `output/gym_form/bookings.jsonl` — the complete record, one line each.
 - `output/gym_form/bookings.csv` — the same data for Excel.
 - `output/gym_form/booking_payments.jsonl` — reported payments.
 - `output/gym_form/booking_approvals.jsonl` — office decisions.
+- `output/gym_form/booking_deletions.jsonl` — removals and restorations.
 
-Payments and decisions live in their own append-only files, so the booking the
-resident signed is never rewritten and the decision history stays auditable.
+Payments, decisions and removals each live in their own append-only file, so the
+booking the resident signed is never rewritten and the history of what the
+office did stays auditable.
 
 > **On free hosting the disk is wiped on every redeploy.** Connect the Google
 > Sheet — that is the durable history.
 
 ---
 
-## 7. Editing the rules, venues or charges later
+## 8. Editing the rules, venues or charges later
 
 Everything the document specifies lives in `hallform/rules.py` as data: the
 venues, their locations, capacities and per-slot charges, the list of occasions,
@@ -163,7 +208,7 @@ the document, so a typo shows up as a failing test rather than a wrong invoice.
 
 ---
 
-## 8. Running and testing
+## 9. Running and testing
 
 ```bash
 uvicorn gymform.standalone:app --host 0.0.0.0 --port 8000
