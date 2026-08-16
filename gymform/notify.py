@@ -177,7 +177,45 @@ def _html_escape(value: str) -> str:
     )
 
 
-def build_summary_html(submission: Submission, whatsapp_link: str = "") -> str:
+def build_decision_buttons(base_url: str, submission: Submission) -> str:
+    """Approve / Reject buttons for the office email.
+
+    Each carries an HMAC bound to that registration and that decision, so the
+    office never has to find a password, and the link cannot be edited into a
+    different verdict. The link only opens a confirmation page — see
+    gymform/web.py for why it must not decide on click.
+    """
+    from gymform import tokens
+
+    if not base_url or not tokens.signing_available():
+        return ""
+
+    base = base_url.rstrip("/")
+    approve = (f"{base}/decide/{submission.reference}?d=approved"
+               f"&t={tokens.make_token(submission.reference, 'approved')}")
+    reject = (f"{base}/decide/{submission.reference}?d=rejected"
+              f"&t={tokens.make_token(submission.reference, 'rejected')}")
+    button = ("display:inline-block;padding:13px 26px;border-radius:8px;"
+              "text-decoration:none;font-weight:600;font-size:15px")
+    return (
+        '<div style="margin:22px 0 6px;padding:18px;background:#f7fafd;'
+        'border:1px solid #e6ecf3;border-radius:12px;text-align:center">'
+        '<div style="font-size:14px;color:#5b6b80;margin-bottom:14px">'
+        'Approve only once the amenity fee is visible in the society account.'
+        '</div>'
+        f'<a href="{approve}" style="{button};background:#0f8a5f;color:#fff;'
+        'margin:0 6px 8px">Approve</a>'
+        f'<a href="{reject}" style="{button};background:#fff;color:#b3261e;'
+        'border:1px solid #b3261e;margin:0 6px 8px">Reject</a>'
+        '<div style="font-size:12px;color:#7b8a9c;margin-top:12px">'
+        'You will be asked to confirm — nothing changes when you click.'
+        '</div></div>'
+    )
+
+
+def build_summary_html(
+    submission: Submission, whatsapp_link: str = "", base_url: str = ""
+) -> str:
     """HTML email body — the office reads this on a phone most of the time."""
     def row(label: str, value: str) -> str:
         return (
@@ -289,6 +327,7 @@ def build_summary_html(submission: Submission, whatsapp_link: str = "") -> str:
         Signed by <strong>{_html_escape(submission.declaration_signature)}</strong>
         {(", " + _html_escape(submission.declaration_place)) if submission.declaration_place else ""}
       </p>
+      {build_decision_buttons(base_url, submission)}
       {whatsapp_block}
     </div>
     <div style="padding:14px 24px;background:#f4f7fb;font-size:12px;color:#7b8a9c">
@@ -564,8 +603,15 @@ def _send_email_smtp(
 # WhatsApp
 # ---------------------------------------------------------------------------
 
-def _send_whatsapp(settings: GymFormSettings, message: str) -> DeliveryResult:
-    number = "".join(ch for ch in settings.notify_whatsapp if ch.isdigit())
+def _send_whatsapp(
+    settings: GymFormSettings, message: str, to_number: str | None = None
+) -> DeliveryResult:
+    """Send to the office by default, or to a specific number when given.
+
+    Decisions go to the trainer rather than the office, which is the one case
+    where the recipient is not the society.
+    """
+    number = "".join(ch for ch in (to_number or settings.notify_whatsapp) if ch.isdigit())
     link = whatsapp_link_for(number, message)
 
     if not number:
@@ -759,7 +805,9 @@ def _send_whatsapp_meta(
 # Entry point
 # ---------------------------------------------------------------------------
 
-def notify_all(settings: GymFormSettings, submission: Submission) -> list[DeliveryResult]:
+def notify_all(
+    settings: GymFormSettings, submission: Submission, base_url: str = ""
+) -> list[DeliveryResult]:
     """Send every configured notification for a submission.
 
     WhatsApp goes first so that, when no WhatsApp API is configured, the
@@ -780,7 +828,9 @@ def notify_all(settings: GymFormSettings, submission: Submission) -> list[Delive
             f"{'s' if submission.client_count != 1 else ''}) — {submission.reference}"
         ),
         text_body=build_summary_text(submission),
-        html_body=build_summary_html(submission, whatsapp_link=whatsapp_result.link),
+        html_body=build_summary_html(
+            submission, whatsapp_link=whatsapp_result.link, base_url=base_url
+        ),
         attachment=attachment,
         attachment_name=submission.id_proof_filename,
     ))
@@ -928,6 +978,28 @@ def notify_decision(
   </div>
 </div>"""
 
-    return [_send_email(
+    results = [_send_email(
         settings, to=email_to, subject=subject, text_body=text, html_body=html,
     )]
+
+    # ...and on WhatsApp, because that is where a trainer actually looks.
+    trainer_whatsapp = record.get("whatsapp") or record.get("mobile") or ""
+    if trainer_whatsapp:
+        status_line = (
+            "✅ *Approved* — you may train your listed clients."
+            if approved else
+            "❌ *Not approved* — please contact the society office."
+        )
+        whatsapp_text = "\n".join([
+            f"*{SOCIETY_NAME} — gym registration*",
+            "",
+            f"Hello {trainer},",
+            status_line,
+            f"Reference: {reference}",
+            *( [f"Note: {note}"] if note else [] ),
+            *( ["", "Carry your ID proof and sign the security register on every visit."]
+               if approved else [] ),
+        ])
+        results.append(_send_whatsapp(settings, whatsapp_text, to_number=f"91{trainer_whatsapp}"))
+
+    return results

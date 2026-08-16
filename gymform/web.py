@@ -19,7 +19,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from gymform import notify, payments, storage
+from gymform import notify, payments, storage, tokens
 from gymform.admin_auth import require_admin
 from gymform.models import (
     APPROVAL_MODES,
@@ -235,7 +235,9 @@ async def submit(request: Request):
     # later. Offloading to the threadpool keeps the loop free while still
     # letting the confirmation page report real delivery results.
     await run_in_threadpool(storage.save_submission, submission)
-    results = await run_in_threadpool(notify.notify_all, settings, submission)
+    results = await run_in_threadpool(
+        notify.notify_all, settings, submission, _form_url(request)
+    )
     _remember_delivery(submission.reference, results)
 
     return RedirectResponse(
@@ -291,6 +293,65 @@ def submitted_page(request: Request, reference: str, paid: int = 0):
             payment_error=request.query_params.get("payment_error", ""),
             **_payment_context(settings, record),
         ),
+    )
+
+
+@gym_app.get("/decide/{reference}", response_class=HTMLResponse)
+def decide_page(request: Request, reference: str, d: str = "", t: str = ""):
+    """Confirmation page behind an Approve/Reject link in the office email.
+
+    This deliberately does **not** act on the GET. Mail providers and security
+    scanners follow links in email before a person ever sees them, so a link
+    that decided on click would approve trainers by itself. The click only
+    shows what is about to happen; a POST from this page commits it.
+    """
+    if not tokens.verify_token(reference, d, t):
+        raise HTTPException(403, "This approval link is not valid or has expired.")
+
+    record = _find_submission(reference)
+    if record is None:
+        raise HTTPException(404, "Unknown submission reference.")
+
+    return templates.TemplateResponse(
+        request, "decide.html",
+        _template_context(request, record=record, decision=d, token=t),
+    )
+
+
+@gym_app.post("/decide/{reference}")
+async def decide_submit(request: Request, reference: str):
+    """Commit the decision the confirmation page showed."""
+    form = await request.form()
+    decision = str(form.get("decision") or "").strip()
+    token = str(form.get("token") or "").strip()
+
+    if not tokens.verify_token(reference, decision, token):
+        raise HTTPException(403, "This approval link is not valid or has expired.")
+    if decision not in storage.DECISIONS:
+        raise HTTPException(400, f"Decision must be one of {storage.DECISIONS}.")
+
+    record = _find_submission(reference)
+    if record is None:
+        raise HTTPException(404, "Unknown submission reference.")
+
+    note = " ".join(str(form.get("note") or "").split())[:300]
+    await run_in_threadpool(storage.record_decision, reference, decision, note)
+    await run_in_threadpool(
+        notify.notify_decision, get_settings(), record, decision, note
+    )
+    return RedirectResponse(
+        f"{_base_path(request)}/decide/{reference}/done?d={decision}", status_code=303
+    )
+
+
+@gym_app.get("/decide/{reference}/done", response_class=HTMLResponse)
+def decide_done(request: Request, reference: str, d: str = ""):
+    record = _find_submission(reference)
+    if record is None:
+        raise HTTPException(404, "Unknown submission reference.")
+    return templates.TemplateResponse(
+        request, "decided.html",
+        _template_context(request, record=record, decision=d),
     )
 
 

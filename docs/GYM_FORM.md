@@ -299,8 +299,10 @@ which only a gateway can set up.
 ## 4c. Office approval — the actual gate
 
 A registration is **pending** until the office approves it. The office page has
-**Approve** / **Reject** buttons with an optional note; the trainer sees their
-status on their confirmation page and is emailed the moment it changes.
+**Approve** / **Reject** buttons with an optional note, and the notification
+email carries the same two buttons. The trainer sees their status on their
+confirmation page, and is told by **email and WhatsApp** the moment it
+changes.
 
 **Approve only once the fee is visible in the society account.** That is the
 whole point of this step: the form cannot see the bank, so it can never know
@@ -310,6 +312,28 @@ the office has registered the trainer, not when a web page accepted a form.
 
 Decisions append to `approvals.jsonl` and the newest wins, so rejecting and
 later approving (when the fee arrives) works, and the history stays auditable.
+
+### Deciding from the notification email
+
+The office email carries **Approve** and **Reject** buttons, so nobody has to
+find the admin password to let a trainer in. Each button URL carries an HMAC
+bound to that registration *and* that decision, so a reject link cannot be
+edited into an approval, and a link for one trainer cannot be pointed at
+another.
+
+**Clicking a button decides nothing.** It opens a confirmation page showing who
+is about to be approved, what fee they owe and whether any payment was
+reported; a POST from that page commits it. This is not politeness — mail
+providers and security scanners follow links in email before a person ever sees
+them, so a link that acted on click would approve trainers by itself.
+
+The signing secret is `GYM_DECISION_SECRET`, falling back to the office
+password, so most deployments need no extra configuration. With no secret
+available the buttons are left out of the email entirely rather than shipped
+unsigned, and `/admin` remains the way to decide.
+
+Rotating the office password invalidates any outstanding links, which is the
+behaviour you want when the password is rotated because someone left.
 
 ### Why payment does not block submission
 
