@@ -490,6 +490,13 @@ example [cron-job.org](https://cron-job.org) or
 https://<your-host>/health
 ```
 
+**Use a HEAD request, not GET.** The first ping after a sleep arrives while
+Render is still serving its own animated "waking up" page, which is far larger
+than the response size some pingers accept — cron-job.org aborts it and reports
+*"Failed (output too large)"* even though the wake-up worked. A HEAD request
+returns no body at all, so the size cap never applies. `/health` and `/` both
+answer HEAD.
+
 Mind the quota. The free tier allows **750 instance hours a month**, and staying
 awake around the clock costs **744** in a 31-day month: it fits, but with only
 six hours to spare, and exceeding it suspends the service until the 1st.

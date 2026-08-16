@@ -1048,3 +1048,22 @@ def test_poster_warns_about_the_cold_start(client):
     assert "not broken" in page.text
     # And it sets the expectation that approval, not submission, grants entry.
     assert "approve before your first session" in page.text
+
+
+@pytest.mark.parametrize("path", ["/gym/health", "/gym/"])
+def test_head_requests_are_answered(client, path):
+    """Uptime pingers use HEAD, and the host's own check does too.
+
+    A 405 here is what made the free-tier keep-warm ping report failure: the
+    first ping of the day arrives while the platform is still serving its
+    "waking up" page, which is larger than some pingers will accept. HEAD has
+    no body, so it sidesteps the size cap — but only if it is not rejected.
+    """
+    response = client.head(path)
+    assert response.status_code == 200
+    assert response.content == b""
+
+
+def test_health_response_is_small(client):
+    """It is polled every few minutes; there is no reason for it to be big."""
+    assert len(client.get("/gym/health").content) < 512

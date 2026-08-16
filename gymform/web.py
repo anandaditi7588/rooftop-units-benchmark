@@ -146,7 +146,7 @@ def _empty_form_values() -> dict:
 # Public pages
 # ---------------------------------------------------------------------------
 
-@gym_app.get("/", response_class=HTMLResponse)
+@gym_app.api_route("/", methods=["GET", "HEAD"], response_class=HTMLResponse)
 def form_page(request: Request):
     return templates.TemplateResponse(
         request, "form.html",
@@ -497,9 +497,17 @@ def admin_id_proof(reference: str):
 # Diagnostics
 # ---------------------------------------------------------------------------
 
-@gym_app.get("/health")
+@gym_app.api_route("/health", methods=["GET", "HEAD"])
 def health(request: Request):
-    """Public liveness check — deliberately free of contact details or counts."""
+    """Public liveness check — deliberately free of contact details or counts.
+
+    HEAD is answered as well as GET, because this is what uptime pingers hit.
+    On a host that sleeps when idle, the first ping of the day lands while the
+    platform is still showing its own "waking up" page — far larger than the
+    response cap some pingers enforce, which they report as a failure even
+    though the wake-up worked. A HEAD request has no body, so it sidesteps
+    that entirely.
+    """
     settings = get_settings()
     return {
         "status": "ok",
