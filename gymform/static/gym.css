@@ -411,6 +411,7 @@ input:focus, select:focus, textarea:focus {
 }
 
 .pill-ok { background: var(--accent-soft); color: #0f5c42; }
+.pill-danger { background: var(--danger-soft); color: #8c1d18; }
 .pill-warn { background: var(--warn-soft); color: var(--warn); }
 
 /* ---------- QR / poster ---------- */
@@ -427,9 +428,39 @@ input:focus, select:focus, textarea:focus {
 .poster .poster-steps { display: inline-block; text-align: left; margin: 18px auto; font-size: 15px; }
 .poster .url { word-break: break-all; font-size: 13px; color: var(--ink-soft); }
 
+/* Free hosting sleeps when idle, so the first scan after a quiet spell waits
+   on a cold start. Saying so on the poster stops a trainer concluding the
+   thing is broken and walking away. */
+.poster-note {
+  max-width: 32em;
+  margin: 0 auto 18px;
+  padding: 10px 14px;
+  background: var(--warn-soft);
+  color: var(--warn);
+  border-radius: 10px;
+  font-size: 13px;
+}
+
 @media print {
   .site-header, .site-footer, .no-print { display: none !important; }
   body { background: #fff; }
   .card { box-shadow: none; border-color: #999; }
   .poster { padding: 12px; }
 }
+
+/* ---------- office approve / reject ---------- */
+
+.decision-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 14px 0 0;
+}
+
+.decision-note { flex: 1 1 220px; }
+
+.btn-approve { background: var(--accent); color: #fff; }
+.btn-approve:hover { background: #0c7350; }
+.btn-reject { background: #fff; color: var(--danger); border-color: var(--danger); }
+.btn-reject:hover { background: var(--danger-soft); }

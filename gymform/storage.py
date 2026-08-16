@@ -22,6 +22,7 @@ from typing import Any, Iterator
 from gymform.models import IST, Submission
 from gymform.rules import RULES
 from gymform.settings import (
+    APPROVALS_JSONL,
     ID_PROOF_DIR,
     PAYMENTS_JSONL,
     SUBMISSIONS_CSV,
@@ -61,6 +62,8 @@ CSV_COLUMNS: list[str] = [
     "all_rules_acknowledged",
     "payment_upi_reference",
     "payment_reported_at",
+    "status",
+    "decided_at",
 ]
 
 
@@ -79,6 +82,9 @@ def _csv_row(record: dict[str, Any]) -> dict[str, Any]:
     payment = record.get("payment") or {}
     row["payment_upi_reference"] = payment.get("upi_reference", "")
     row["payment_reported_at"] = payment.get("reported_at", "")
+    approval = record.get("approval") or {}
+    row["status"] = record.get("status", "pending")
+    row["decided_at"] = approval.get("decided_at", "")
     return row
 
 
@@ -155,6 +161,54 @@ def load_payments() -> dict[str, dict[str, Any]]:
     return payments
 
 
+DECISIONS = ("approved", "rejected")
+
+
+def record_decision(reference: str, decision: str, note: str = "") -> dict[str, Any]:
+    """Record the office approving or rejecting a registration.
+
+    This is the real gate. The form cannot see the society's bank account, so
+    it can never know a trainer has paid — the office can, and this is where
+    that judgement is written down. Security admits approved trainers only.
+
+    Append-only, like payments: the decision history stays auditable, and a
+    later change of mind never erases who decided what and when.
+    """
+    if decision not in DECISIONS:
+        raise ValueError(f"decision must be one of {DECISIONS}, got {decision!r}")
+    entry = {
+        "reference": reference,
+        "decision": decision,
+        "note": note,
+        "decided_at": datetime.now(IST).isoformat(),
+    }
+    ensure_dirs()
+    with _write_lock:
+        with open(APPROVALS_JSONL, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    logger.info("Gym form: %s %s", reference, decision)
+    return entry
+
+
+def load_decisions() -> dict[str, dict[str, Any]]:
+    """Latest decision per registration reference."""
+    decisions: dict[str, dict[str, Any]] = {}
+    if not APPROVALS_JSONL.exists():
+        return decisions
+    with open(APPROVALS_JSONL, "r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if entry.get("reference"):
+                decisions[entry["reference"]] = entry
+    return decisions
+
+
 def iter_submissions() -> Iterator[dict[str, Any]]:
     """Yield stored submissions, newest last. Skips any corrupted line."""
     if not SUBMISSIONS_JSONL.exists():
@@ -175,8 +229,12 @@ def iter_submissions() -> Iterator[dict[str, Any]]:
 def load_submissions(limit: int | None = None) -> list[dict[str, Any]]:
     """Stored submissions, newest first, each with any reported payment."""
     payments = load_payments()
+    decisions = load_decisions()
     records = list(iter_submissions())
     for record in records:
-        record["payment"] = payments.get(record.get("reference", ""))
+        reference = record.get("reference", "")
+        record["payment"] = payments.get(reference)
+        record["approval"] = decisions.get(reference)
+        record["status"] = (record["approval"] or {}).get("decision", "pending")
     records.reverse()
     return records[:limit] if limit else records

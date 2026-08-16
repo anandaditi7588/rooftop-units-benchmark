@@ -71,11 +71,26 @@
 </div>
 
 {% for record in records %}
-<div class="card">
+<div class="card" id="{{ record.reference }}">
   <div class="section-head" style="justify-content:space-between">
     <h2>{{ record.trainer_name }}</h2>
     <span class="small muted">{{ record.reference }}</span>
   </div>
+  <p style="margin:0 0 10px">
+    {% if record.status == 'approved' %}
+      <span class="pill pill-ok">Approved</span>
+    {% elif record.status == 'rejected' %}
+      <span class="pill pill-danger">Not approved</span>
+    {% else %}
+      <span class="pill pill-warn">Awaiting your approval</span>
+    {% endif %}
+    {% if record.approval %}
+    <span class="small muted">
+      &nbsp;{{ record.approval.decided_at[:16].replace('T', ' ') }}
+      {%- if record.approval.note %} — {{ record.approval.note }}{% endif %}
+    </span>
+    {% endif %}
+  </p>
   <p class="small muted" style="margin-top:0">
     Submitted {{ record.submitted_at }} ·
     {{ record.client_count }} client{{ 's' if record.client_count != 1 else '' }} ·
@@ -126,6 +141,22 @@
     </tr>
     <tr><th>Signed</th><td>{{ record.declaration_signature }}{% if record.declaration_place %}, {{ record.declaration_place }}{% endif %}</td></tr>
   </table>
+
+  <form method="post" action="{{ base }}/admin/decision/{{ record.reference }}"
+        class="decision-bar">
+    <input type="text" name="note" placeholder="Note (optional) — e.g. fee received 13 Aug"
+           value="" class="decision-note">
+    <button type="submit" name="decision" value="approved" class="btn btn-approve">
+      {% if record.status == 'approved' %}Re-approve{% else %}Approve{% endif %}
+    </button>
+    <button type="submit" name="decision" value="rejected" class="btn btn-reject">
+      Reject
+    </button>
+  </form>
+  <p class="small muted" style="margin:6px 0 14px">
+    Approve only once you have seen the fee in the society account. The trainer is
+    emailed either way, and security should admit approved trainers only.
+  </p>
 
   <div class="table-scroll">
     <table class="data-table">

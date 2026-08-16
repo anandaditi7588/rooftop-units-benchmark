@@ -23,8 +23,30 @@
     <tr><th>Clients listed</th><td>{{ record.client_count }}</td></tr>
     <tr><th>Monthly amenity fee</th><td>₹{{ "{:,}".format(record.monthly_fee_inr) }}</td></tr>
   </table>
+  {% if record.status == 'approved' %}
+  <div class="alert alert-ok" style="margin-top:14px">
+    <strong>Approved by the society office.</strong> You may train your listed
+    clients in the gym. Carry your ID proof and sign the security register on
+    every visit.
+    {% if record.approval.note %}<br><em>{{ record.approval.note }}</em>{% endif %}
+  </div>
+  {% elif record.status == 'rejected' %}
+  <div class="alert alert-danger" style="margin-top:14px">
+    <strong>Not approved yet.</strong> Please contact the society office before
+    coming to the gym.
+    {% if record.approval.note %}<br><em>{{ record.approval.note }}</em>{% endif %}
+  </div>
+  {% else %}
+  <div class="alert alert-warn" style="margin-top:14px">
+    <strong>Awaiting office approval.</strong> The office will confirm once the
+    amenity fee has been received. Please do not start training until then —
+    you will get an email as soon as it is approved.
+  </div>
+  {% endif %}
+
   <p class="hint" style="margin-top:12px">
     Keep this reference — quote it when you follow up with the society office.
+    You can revisit this page any time to check your status.
   </p>
 </div>
 

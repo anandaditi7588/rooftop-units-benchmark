@@ -146,7 +146,7 @@ def _empty_form_values() -> dict:
 # Public pages
 # ---------------------------------------------------------------------------
 
-@gym_app.get("/", response_class=HTMLResponse)
+@gym_app.api_route("/", methods=["GET", "HEAD"], response_class=HTMLResponse)
 def form_page(request: Request):
     return templates.TemplateResponse(
         request, "form.html",
@@ -431,6 +431,33 @@ def admin_page(request: Request):
     )
 
 
+@gym_app.post("/admin/decision/{reference}", dependencies=[Depends(require_admin)])
+async def admin_decision(request: Request, reference: str):
+    """Approve or reject a registration.
+
+    This is the society's actual gate. The form cannot see the bank account,
+    so it can never know whether the amenity fee arrived — the office can, and
+    approves once it has. Security admits approved trainers only, which is
+    exactly how the rulebook already words it: entry is permitted when the
+    office has registered the trainer, not when a web page said so.
+    """
+    record = _find_submission(reference)
+    if record is None:
+        raise HTTPException(404, "Unknown submission reference.")
+
+    form = await request.form()
+    decision = str(form.get("decision") or "").strip()
+    if decision not in storage.DECISIONS:
+        raise HTTPException(400, f"Decision must be one of {storage.DECISIONS}.")
+    note = " ".join(str(form.get("note") or "").split())[:300]
+
+    await run_in_threadpool(storage.record_decision, reference, decision, note)
+    await run_in_threadpool(
+        notify.notify_decision, get_settings(), record, decision, note
+    )
+    return RedirectResponse(f"{_base_path(request)}/admin#{reference}", status_code=303)
+
+
 @gym_app.get("/admin/submissions.csv", dependencies=[Depends(require_admin)])
 def admin_csv():
     ensure_dirs()
@@ -470,9 +497,17 @@ def admin_id_proof(reference: str):
 # Diagnostics
 # ---------------------------------------------------------------------------
 
-@gym_app.get("/health")
+@gym_app.api_route("/health", methods=["GET", "HEAD"])
 def health(request: Request):
-    """Public liveness check — deliberately free of contact details or counts."""
+    """Public liveness check — deliberately free of contact details or counts.
+
+    HEAD is answered as well as GET, because this is what uptime pingers hit.
+    On a host that sleeps when idle, the first ping of the day lands while the
+    platform is still showing its own "waking up" page — far larger than the
+    response cap some pingers enforce, which they report as a failure even
+    though the wake-up worked. A HEAD request has no body, so it sidesteps
+    that entirely.
+    """
     settings = get_settings()
     return {
         "status": "ok",

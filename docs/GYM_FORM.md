@@ -296,6 +296,39 @@ which only a gateway can set up.
 
 ---
 
+## 4c. Office approval — the actual gate
+
+A registration is **pending** until the office approves it. The office page has
+**Approve** / **Reject** buttons with an optional note; the trainer sees their
+status on their confirmation page and is emailed the moment it changes.
+
+**Approve only once the fee is visible in the society account.** That is the
+whole point of this step: the form cannot see the bank, so it can never know
+whether a trainer paid. The office can. Security should admit approved trainers
+only — which is how the rulebook already reads, since entry is permitted when
+the office has registered the trainer, not when a web page accepted a form.
+
+Decisions append to `approvals.jsonl` and the newest wins, so rejecting and
+later approving (when the fee arrives) works, and the history stays auditable.
+
+### Why payment does not block submission
+
+Blocking Submit on payment sounds stronger but is weaker in practice, for two
+reasons. Without a payment gateway there is nothing to verify against — a
+trainer could type any reference and get through, so the block would be
+theatre. And a hard block loses the registration itself: the trainer's details,
+client list and rule acknowledgements would never reach the society at all,
+which is the part worth keeping even when the fee is late.
+
+Recording everything and gating on approval keeps the record and puts the
+decision with the only party who can actually check.
+
+If you later want payment genuinely enforced before submission, that needs a
+gateway (Razorpay or similar) with webhook verification: about 2% + GST per
+transaction and society KYC.
+
+---
+
 ## 5. The QR code
 
 Open **`https://<your-host>/gym/poster`** and print it (Ctrl/Cmd + P). It is an
@@ -442,6 +475,41 @@ previously run the free tier out of memory. `render.yaml` and
 Note that on the standalone deployment the form sits at the **site root**, so
 the paths have no `/gym` prefix: the form is `/`, the poster is `/poster`, the
 office pages are `/admin`.
+
+### Keeping the first scan fast
+
+Render's free tier shuts the service down after ~15 minutes with no traffic, so
+the next scan waits 30-60 seconds while the instance starts. Trainers read that
+as broken, which is why the poster says the first scan may take a minute.
+
+To remove the wait, keep the service warm with a free uptime pinger — for
+example [cron-job.org](https://cron-job.org) or
+[UptimeRobot](https://uptimerobot.com) — hitting:
+
+```
+https://<your-host>/health
+```
+
+**Use a HEAD request, not GET.** The first ping after a sleep arrives while
+Render is still serving its own animated "waking up" page, which is far larger
+than the response size some pingers accept — cron-job.org aborts it and reports
+*"Failed (output too large)"* even though the wake-up worked. A HEAD request
+returns no body at all, so the size cap never applies. `/health` and `/` both
+answer HEAD.
+
+Mind the quota. The free tier allows **750 instance hours a month**, and staying
+awake around the clock costs **744** in a 31-day month: it fits, but with only
+six hours to spare, and exceeding it suspends the service until the 1st.
+
+**Ping only during gym hours instead.** The gym runs 6-11am and 4-9pm — ten
+hours a day, about **310 hours a month**. That covers every moment a trainer
+could be standing at the door with a phone, and leaves a wide margin. In
+cron-job.org, set the schedule to every 10 minutes and restrict the hours to
+06-10 and 16-20.
+
+Note this is a workaround for a limit Render put there deliberately; it stays
+inside the hours they grant, but if you would rather not, a paid instance
+($7/month) never sleeps.
 
 ### Two free-tier facts worth knowing
 

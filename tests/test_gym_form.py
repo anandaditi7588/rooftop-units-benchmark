@@ -37,6 +37,7 @@ def client(tmp_path, monkeypatch):
         monkeypatch.setattr(module, "SUBMISSIONS_JSONL", tmp_path / "submissions.jsonl")
         monkeypatch.setattr(module, "SUBMISSIONS_CSV", tmp_path / "submissions.csv")
         monkeypatch.setattr(module, "PAYMENTS_JSONL", tmp_path / "payments.jsonl")
+        monkeypatch.setattr(module, "APPROVALS_JSONL", tmp_path / "approvals.jsonl")
         monkeypatch.setattr(module, "ID_PROOF_DIR", tmp_path / "id_proofs")
     monkeypatch.setattr(settings_module, "DATA_DIR", tmp_path)
     monkeypatch.setenv("GYM_SUBMIT_COOLDOWN", "0")
@@ -608,6 +609,7 @@ async def test_sending_never_runs_on_the_event_loop_thread(tmp_path, monkeypatch
         monkeypatch.setattr(module, "SUBMISSIONS_JSONL", tmp_path / "submissions.jsonl")
         monkeypatch.setattr(module, "SUBMISSIONS_CSV", tmp_path / "submissions.csv")
         monkeypatch.setattr(module, "PAYMENTS_JSONL", tmp_path / "payments.jsonl")
+        monkeypatch.setattr(module, "APPROVALS_JSONL", tmp_path / "approvals.jsonl")
         monkeypatch.setattr(module, "ID_PROOF_DIR", tmp_path / "id_proofs")
     monkeypatch.setattr(settings_module, "DATA_DIR", tmp_path)
     monkeypatch.setenv("GYM_SUBMIT_COOLDOWN", "0")
@@ -913,3 +915,155 @@ def test_office_page_shows_payment_status(client, monkeypatch):
 
     csv_export = client.get("/gym/admin/submissions.csv", auth=("office", "secret"))
     assert "payment_upi_reference" in csv_export.text
+
+
+# ---------------------------------------------------------------------------
+# Office approval — the society's actual gate
+# ---------------------------------------------------------------------------
+
+def _office(monkeypatch):
+    monkeypatch.setenv("GYM_ADMIN_USERNAME", "office")
+    monkeypatch.setenv("GYM_ADMIN_PASSWORD", "secret")
+    return ("office", "secret")
+
+
+def test_a_new_registration_starts_pending(client, monkeypatch):
+    auth = _office(monkeypatch)
+    reference = _submit_and_get_reference(client)
+
+    page = client.get(f"/gym/submitted/{reference}")
+    assert "Awaiting office approval" in page.text
+    assert "do not start training until then" in page.text
+
+    office = client.get("/gym/admin", auth=auth)
+    assert "Awaiting your approval" in office.text
+
+
+def test_office_can_approve_and_the_trainer_is_told(client, monkeypatch):
+    auth = _office(monkeypatch)
+    posts: list[dict] = []
+
+    class Reply:
+        ok = True
+        status_code = 201
+        text = "{}"
+
+    monkeypatch.setattr("gymform.notify.requests.post",
+                        lambda url, json=None, **k: (posts.append(json), Reply())[1])
+    monkeypatch.setenv("GYM_BREVO_API_KEY", "xkeysib-test")
+
+    reference = _submit_and_get_reference(client)
+    posts.clear()
+
+    response = client.post(f"/gym/admin/decision/{reference}",
+                           data={"decision": "approved", "note": "Fee received 13 Aug"},
+                           auth=auth, follow_redirects=False)
+    assert response.status_code == 303
+
+    page = client.get(f"/gym/submitted/{reference}")
+    assert "Approved by the society office" in page.text
+    assert "Fee received 13 Aug" in page.text
+
+    office = client.get("/gym/admin", auth=auth)
+    assert "Approved" in office.text
+
+    # The trainer is the one waiting on this, so they get the email.
+    assert posts[0]["to"] == [{"email": "ramesh@example.com"}]
+    assert "approved" in posts[0]["subject"].lower()
+    assert "sign the security register" in posts[0]["textContent"]
+
+
+def test_office_can_reject(client, monkeypatch):
+    auth = _office(monkeypatch)
+    reference = _submit_and_get_reference(client)
+
+    client.post(f"/gym/admin/decision/{reference}",
+                data={"decision": "rejected", "note": "Fee not received"},
+                auth=auth, follow_redirects=False)
+
+    page = client.get(f"/gym/submitted/{reference}")
+    assert "Not approved yet" in page.text
+    assert "Fee not received" in page.text
+
+
+def test_a_later_decision_supersedes_the_earlier_one(client, monkeypatch):
+    """The office may reject, then approve once the fee lands."""
+    auth = _office(monkeypatch)
+    reference = _submit_and_get_reference(client)
+
+    client.post(f"/gym/admin/decision/{reference}", data={"decision": "rejected"},
+                auth=auth, follow_redirects=False)
+    client.post(f"/gym/admin/decision/{reference}",
+                data={"decision": "approved", "note": "Paid later"},
+                auth=auth, follow_redirects=False)
+
+    page = client.get(f"/gym/submitted/{reference}")
+    assert "Approved by the society office" in page.text
+    assert "Not approved yet" not in page.text
+
+
+def test_only_the_office_can_decide(client, monkeypatch):
+    monkeypatch.delenv("GYM_ADMIN_USERNAME", raising=False)
+    monkeypatch.delenv("GYM_ADMIN_PASSWORD", raising=False)
+    monkeypatch.delenv("RTU_AUTH_USERNAME", raising=False)
+    monkeypatch.delenv("RTU_AUTH_PASSWORD", raising=False)
+    reference = _submit_and_get_reference(client)
+
+    # Fails closed with no admin login configured...
+    assert client.post(f"/gym/admin/decision/{reference}",
+                       data={"decision": "approved"}).status_code == 503
+
+    # ...and needs the right password once one is.
+    auth = _office(monkeypatch)
+    assert client.post(f"/gym/admin/decision/{reference}",
+                       data={"decision": "approved"},
+                       auth=("office", "wrong")).status_code == 401
+    assert client.post(f"/gym/admin/decision/{reference}", data={"decision": "approved"},
+                       auth=auth, follow_redirects=False).status_code == 303
+
+
+def test_a_bogus_decision_is_refused(client, monkeypatch):
+    auth = _office(monkeypatch)
+    reference = _submit_and_get_reference(client)
+    assert client.post(f"/gym/admin/decision/{reference}",
+                       data={"decision": "maybe"}, auth=auth).status_code == 400
+    assert client.post("/gym/admin/decision/SB-PT-NOPE",
+                       data={"decision": "approved"}, auth=auth).status_code == 404
+
+
+def test_status_reaches_the_csv(client, monkeypatch):
+    auth = _office(monkeypatch)
+    reference = _submit_and_get_reference(client)
+    client.post(f"/gym/admin/decision/{reference}", data={"decision": "approved"},
+                auth=auth, follow_redirects=False)
+
+    csv_export = client.get("/gym/admin/submissions.csv", auth=auth)
+    assert "status" in csv_export.text
+
+
+def test_poster_warns_about_the_cold_start(client):
+    """Free hosting sleeps when idle; a trainer should not read that as broken."""
+    page = client.get("/gym/poster")
+    assert "up to a minute" in page.text
+    assert "not broken" in page.text
+    # And it sets the expectation that approval, not submission, grants entry.
+    assert "approve before your first session" in page.text
+
+
+@pytest.mark.parametrize("path", ["/gym/health", "/gym/"])
+def test_head_requests_are_answered(client, path):
+    """Uptime pingers use HEAD, and the host's own check does too.
+
+    A 405 here is what made the free-tier keep-warm ping report failure: the
+    first ping of the day arrives while the platform is still serving its
+    "waking up" page, which is larger than some pingers will accept. HEAD has
+    no body, so it sidesteps the size cap — but only if it is not rejected.
+    """
+    response = client.head(path)
+    assert response.status_code == 200
+    assert response.content == b""
+
+
+def test_health_response_is_small(client):
+    """It is polled every few minutes; there is no reason for it to be big."""
+    assert len(client.get("/gym/health").content) < 512

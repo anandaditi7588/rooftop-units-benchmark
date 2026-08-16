@@ -861,3 +861,73 @@ def notify_payment(
     ])
     results.append(_send_whatsapp(settings, whatsapp_text))
     return results
+
+
+def notify_decision(
+    settings: GymFormSettings, record: dict, decision: str, note: str = ""
+) -> list[DeliveryResult]:
+    """Tell the trainer the office has approved or rejected their registration.
+
+    The trainer is the one waiting on this, so they are the recipient — being
+    left to guess whether they may start training is the whole problem this
+    solves.
+    """
+    trainer = record.get("trainer_name", "")
+    reference = record.get("reference", "")
+    email_to = record.get("email", "")
+    approved = decision == "approved"
+
+    if not email_to:
+        return [DeliveryResult("email_trainer", False, "No trainer email on record.")]
+
+    subject = (
+        f"{SOCIETY_NAME} — gym registration "
+        f"{'approved' if approved else 'not approved'} ({reference})"
+    )
+    if approved:
+        headline = "Your registration is approved"
+        body = (
+            "You may now train your listed clients in the society gym. Carry your "
+            "ID proof whenever you are inside the premises, and sign the security "
+            "register with your in-time and out-time on every visit."
+        )
+    else:
+        headline = "Your registration has not been approved"
+        body = (
+            "Please contact the society office before coming to the gym. If the "
+            "amenity fee is outstanding, settle it and let the office know so your "
+            "registration can be reconsidered."
+        )
+
+    note_line = f"\n\nNote from the office: {note}" if note else ""
+    text = (
+        f"Dear {trainer},\n\n{headline}.\n\n{body}{note_line}\n\n"
+        f"Reference: {reference}\n\n{SOCIETY_NAME}, {SOCIETY_ADDRESS}"
+    )
+    colour = "#0f8a5f" if approved else "#b3261e"
+    note_html = (
+        f'<p style="padding:12px 14px;background:#eef3f9;border-radius:10px">'
+        f'<strong>Note from the office:</strong> {_html_escape(note)}</p>'
+        if note else ""
+    )
+    html = f"""\
+<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#f4f7fb;padding:20px">
+  <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden">
+    <div style="background:{colour};color:#fff;padding:20px 24px">
+      <div style="font-size:19px;font-weight:700">{headline}</div>
+      <div style="font-size:13px;opacity:.85;margin-top:4px">{_html_escape(reference)}</div>
+    </div>
+    <div style="padding:20px 24px;font-size:14px;color:#16233a;line-height:1.6">
+      <p>Dear {_html_escape(trainer)},</p>
+      <p>{body}</p>
+      {note_html}
+    </div>
+    <div style="padding:14px 24px;background:#f4f7fb;font-size:12px;color:#7b8a9c">
+      {_html_escape(SOCIETY_NAME)}, {_html_escape(SOCIETY_ADDRESS)}
+    </div>
+  </div>
+</div>"""
+
+    return [_send_email(
+        settings, to=email_to, subject=subject, text_body=text, html_body=html,
+    )]
