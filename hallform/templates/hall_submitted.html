@@ -26,7 +26,11 @@
       {%- if record.occasion_detail %} — {{ record.occasion_detail }}{% endif %}</td></tr>
     <tr><th>Persons</th><td>{{ record.expected_persons }}</td></tr>
     <tr><th>Charge</th><td>₹{{ "{:,}".format(record.charge_inr) }}
-      <span class="small muted">cash, one day before</span></td></tr>
+      {% if record.payment %}
+      <span class="small muted">paid online — UPI {{ record.payment.upi_reference }}</span>
+      {% else %}
+      <span class="small muted">cash, one day before</span>
+      {% endif %}</td></tr>
     <tr><th>Security deposit</th><td>₹{{ "{:,}".format(record.security_deposit_inr) }}
       <span class="small muted">refundable, by cheque</span></td></tr>
   </table>
@@ -174,7 +178,12 @@
 <div class="card">
   <h2>Before your function</h2>
   <ul class="small muted">
+    {% if record.payment %}
+    <li><strong>Nothing to pay in cash</strong> — your ₹{{ "{:,}".format(record.charge_inr) }}
+      is already paid online (UPI reference {{ record.payment.upi_reference }}).</li>
+    {% else %}
     <li>Pay ₹{{ "{:,}".format(record.charge_inr) }} in cash one day before — it goes to the society's cultural fund.</li>
+    {% endif %}
     <li>Give the refundable security deposit of ₹{{ "{:,}".format(record.security_deposit_inr) }} by cheque.</li>
     <li>Chairs, tables and guest parking are your responsibility.</li>
     <li>Clean the amenity, utensils, tiles and toilets afterwards — the cleaning cost is deducted from the deposit otherwise.</li>

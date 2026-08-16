@@ -20,9 +20,15 @@
   {% endif %}
 
   <p class="small muted" style="margin-bottom:0">
-    Reference {{ record.reference }}. Remember the charge of
-    ₹{{ "{:,}".format(record.charge_inr) }} in cash one day before, and the
-    refundable deposit of ₹{{ "{:,}".format(record.security_deposit_inr) }} by cheque.
+    Reference {{ record.reference }}.
+    {% if record.payment %}
+    The charge of ₹{{ "{:,}".format(record.charge_inr) }} is reported paid online
+    (UPI {{ record.payment.upi_reference }}) — no cash is due from this resident.
+    {% else %}
+    Charge of ₹{{ "{:,}".format(record.charge_inr) }} in cash one day before.
+    {% endif %}
+    The refundable deposit of ₹{{ "{:,}".format(record.security_deposit_inr) }}
+    is by cheque either way.
   </p>
 </div>
 

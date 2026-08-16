@@ -757,3 +757,113 @@ def test_a_removal_reaches_the_google_sheet(client, office, monkeypatch):
     # Same reference each time, so the sheet updates one row rather than
     # collecting a second line for the same booking.
     assert pushed[-1]["Reference"] == pushed[0]["Reference"] == reference
+
+
+# ---------------------------------------------------------------------------
+# Somebody who paid online is not asked for cash
+# ---------------------------------------------------------------------------
+
+def _approved_record(client, office, paid: bool) -> dict:
+    """A confirmed booking, optionally with the charge already paid online."""
+    reference = _book(client)
+    if paid:
+        client.post(
+            f"/hall/payment/{reference}",
+            data={"upi_reference": "412345678901"},
+            follow_redirects=False,
+        )
+    client.post(
+        f"/hall/admin/decision/{reference}",
+        data={"decision": "approved"}, auth=office, follow_redirects=False,
+    )
+    import hallform.storage as storage_module
+    return storage_module.find_booking(reference)
+
+
+@pytest.fixture()
+def upi(monkeypatch):
+    monkeypatch.setenv("GYM_UPI_ID", "siliconbay@okhdfcbank")
+
+
+def _sent(record, decision="approved"):
+    """The messages notify_decision would send, captured rather than sent."""
+    from gymform.settings import get_settings
+    import hallform.notify as notify_module
+
+    captured = []
+    real_email, real_whatsapp = notify_module.send_email, notify_module.send_whatsapp
+    try:
+        notify_module.send_email = lambda settings, **kw: (
+            captured.append(("email", kw["text_body"] + kw["html_body"]))
+            or DUMMY
+        )
+        notify_module.send_whatsapp = lambda settings, message, **kw: (
+            captured.append(("whatsapp", message)) or DUMMY
+        )
+        notify_module.notify_decision(get_settings(), record, decision)
+    finally:
+        notify_module.send_email, notify_module.send_whatsapp = real_email, real_whatsapp
+    return {channel: body for channel, body in captured}
+
+
+from gymform.notify import DeliveryResult as _DR  # noqa: E402
+DUMMY = _DR("email", True, "captured")
+
+
+def test_a_resident_who_paid_online_is_not_asked_for_cash(client, office, upi):
+    record = _approved_record(client, office, paid=True)
+    messages = _sent(record)
+
+    for channel, body in messages.items():
+        # The instruction to bring money, not the word "cash" — the new wording
+        # says "nothing to pay in cash", which is the opposite of a demand.
+        assert "cash one day before" not in body, f"{channel} still asks for cash"
+        assert "nothing to pay in cash" in body.lower(), f"{channel} unclear"
+        assert "412345678901" in body, f"{channel} does not mention the payment"
+        # The deposit is unchanged — the rules give no online route for it.
+        assert "5,000" in body and "cheque" in body
+
+
+def test_a_resident_who_has_not_paid_is_still_asked_for_cash(client, office, upi):
+    record = _approved_record(client, office, paid=False)
+    messages = _sent(record)
+
+    for channel, body in messages.items():
+        assert "cash one day before" in body, f"{channel} dropped the cash reminder"
+        assert "5,000" in body and "cheque" in body
+
+
+def test_the_confirmation_page_drops_the_cash_line_once_paid(client, office, upi):
+    reference = _book(client)
+    before = client.get(f"/hall/submitted/{reference}").text
+    assert "in cash one day before" in before
+
+    client.post(
+        f"/hall/payment/{reference}",
+        data={"upi_reference": "412345678901"}, follow_redirects=False,
+    )
+    after = client.get(f"/hall/submitted/{reference}").text
+    assert "in cash one day before" not in after
+    assert "Nothing to pay in cash" in after
+    assert "412345678901" in after
+    # Deposit unchanged.
+    assert "5,000" in after and "cheque" in after
+
+
+def test_the_submission_copy_offers_both_routes_when_upi_is_on(upi):
+    from gymform.settings import get_settings
+    from hallform.models import parse_booking
+    from hallform.notify import build_resident_copy_html, build_resident_copy_text
+
+    booking, errors, _ = parse_booking(payload())
+    assert errors == {}
+
+    on = build_resident_copy_text(booking, get_settings().payments_enabled)
+    assert "or online now from your booking page" in on
+    assert "cash one day before" in on
+    assert "or online from" in build_resident_copy_html(booking, True)
+
+    # With UPI switched off there is only one route, so only cash is mentioned.
+    off = build_resident_copy_text(booking, payments_enabled=False)
+    assert "online" not in off
+    assert "collected in cash one day before" in off

@@ -142,6 +142,19 @@ def _shell(title: str, reference: str, inner: str, colour: str = "#16233a") -> s
 </div>"""
 
 
+def charge_paid_online(record: dict) -> bool:
+    """Has this resident already paid the booking charge over UPI?
+
+    Decides whether we ask them for cash. Telling somebody to bring money they
+    have already sent is the fastest way to make them stop trusting the
+    confirmation, so every message that mentions the charge asks this first.
+
+    The deposit is unaffected — that is ₹5,000 by cheque either way, and the
+    rules give no online route for it.
+    """
+    return bool((record.get("payment") or {}).get("upi_reference"))
+
+
 def _row(label: str, value: str) -> str:
     return (
         '<tr>'
@@ -201,7 +214,26 @@ def build_summary_html(
     return _shell("New amenity booking request", booking.reference, inner)
 
 
-def build_resident_copy_text(booking: Booking) -> str:
+def _charge_line_at_submission(booking: Booking, payments_enabled: bool) -> str:
+    """What the resident is told about the charge before they have paid anything.
+
+    Nothing is paid yet at this point, so both routes are offered when online
+    payment is switched on — the rules ask for cash, and UPI is the convenience
+    on top. Once they do pay online, every later message drops the cash line.
+    """
+    if payments_enabled:
+        return (
+            f"Charge of INR {booking.charge_inr:,} — pay in cash one day before "
+            "the function, or online now from your booking page. If you pay "
+            "online you do not need to bring cash."
+        )
+    return (
+        f"Charge of INR {booking.charge_inr:,} is collected in cash one day "
+        "before the function."
+    )
+
+
+def build_resident_copy_text(booking: Booking, payments_enabled: bool = False) -> str:
     return "\n".join([
         f"Dear {booking.resident_name},",
         "",
@@ -216,8 +248,7 @@ def build_resident_copy_text(booking: Booking) -> str:
         f"Persons   : {booking.expected_persons}",
         "",
         "PLEASE REMEMBER",
-        f"  * Charge of INR {booking.charge_inr:,} is collected in cash one day "
-        "before the function.",
+        f"  * {_charge_line_at_submission(booking, payments_enabled)}",
         f"  * A refundable security deposit of INR {SECURITY_DEPOSIT_INR:,} is "
         "payable by cheque.",
         "  * Chairs, tables and guest parking are your responsibility.",
@@ -232,7 +263,7 @@ def build_resident_copy_text(booking: Booking) -> str:
     ])
 
 
-def build_resident_copy_html(booking: Booking) -> str:
+def build_resident_copy_html(booking: Booking, payments_enabled: bool = False) -> str:
     inner = f"""
       <p>Dear {html_escape(booking.resident_name)},</p>
       <p>Your booking request has reached the {html_escape(SOCIETY_NAME)} office.
@@ -248,7 +279,12 @@ def build_resident_copy_html(booking: Booking) -> str:
       <div style="margin:18px 0;padding:14px 16px;background:#fff6e5;border-left:4px solid #e0a800;border-radius:6px;color:#7a5200">
         <strong>Before your function</strong>
         <ul style="margin:8px 0 0;padding-left:20px">
-          <li>₹{booking.charge_inr:,} in cash, one day before.</li>
+          <li>{
+            f"₹{booking.charge_inr:,} — in cash one day before, or online from "
+            "your booking page (pay online and you need bring no cash)."
+            if payments_enabled else
+            f"₹{booking.charge_inr:,} in cash, one day before."
+          }</li>
           <li>₹{SECURITY_DEPOSIT_INR:,} refundable security deposit, by cheque.</li>
           <li>Chairs, tables and guest parking are yours to arrange.</li>
           <li>Clean the amenity afterwards, or the cost comes out of the deposit.</li>
@@ -299,8 +335,8 @@ def notify_all(
             subject=(
                 f"{SOCIETY_NAME} — booking request received ({booking.reference})"
             ),
-            text_body=build_resident_copy_text(booking),
-            html_body=build_resident_copy_html(booking),
+            text_body=build_resident_copy_text(booking, settings.payments_enabled),
+            html_body=build_resident_copy_html(booking, settings.payments_enabled),
         ))
 
     return results
@@ -386,12 +422,27 @@ def notify_decision(
     if not email_to:
         return [DeliveryResult("email_trainer", False, "No resident email on record.")]
 
+    paid_online = charge_paid_online(record)
+    upi_reference = (record.get("payment") or {}).get("upi_reference", "")
+
     if approved:
         headline = "Your booking is confirmed"
+        # Only ask for cash from somebody who has not already paid.
+        if paid_online:
+            money = (
+                f"Your online payment of ₹{charge:,} is on record (UPI reference "
+                f"{upi_reference}), so there is nothing to pay in cash. Please "
+                f"hand over the refundable security deposit of "
+                f"₹{SECURITY_DEPOSIT_INR:,} by cheque."
+            )
+        else:
+            money = (
+                f"Please pay ₹{charge:,} in cash one day before the function, and "
+                f"hand over the refundable security deposit of "
+                f"₹{SECURITY_DEPOSIT_INR:,} by cheque."
+            )
         body = (
-            f"{venue} is reserved for you on {when}. Please pay ₹{charge:,} in cash "
-            f"one day before the function and hand over the refundable security "
-            f"deposit of ₹{SECURITY_DEPOSIT_INR:,} by cheque. Chairs, tables and "
+            f"{venue} is reserved for you on {when}. {money} Chairs, tables and "
             "guest parking are yours to arrange, the amenity must be cleaned after "
             "use, and lights and fans switched off when you finish."
         )
@@ -448,8 +499,14 @@ def notify_decision(
             *([f"Note: {note}"] if note else []),
             *([
                 "",
-                f"Please pay ₹{charge:,} cash one day before, and give the "
-                f"₹{SECURITY_DEPOSIT_INR:,} refundable deposit by cheque.",
+                (
+                    f"Your ₹{charge:,} online payment is on record (UPI ref "
+                    f"{upi_reference}) — nothing to pay in cash. Please give the "
+                    f"₹{SECURITY_DEPOSIT_INR:,} refundable deposit by cheque."
+                    if paid_online else
+                    f"Please pay ₹{charge:,} cash one day before, and give the "
+                    f"₹{SECURITY_DEPOSIT_INR:,} refundable deposit by cheque."
+                ),
             ] if approved else [
                 "",
                 "Please contact the society office for another date.",
