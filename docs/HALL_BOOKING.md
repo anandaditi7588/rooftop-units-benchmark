@@ -172,8 +172,17 @@ and QR for the booking charge — the same mechanism as the trainer form.
 
 UPI gives the server no callback, so nothing here proves money moved. The
 resident enters the reference from their payment app, the office matches it
-against the society account, and every surface says **reported**, not paid. The
-₹5,000 deposit is by cheque either way.
+against the society account, and every surface says **reported**, not paid.
+
+**Once a resident has paid online, nothing asks them for cash again.** The
+confirmation email, the WhatsApp message and their booking page all drop the
+"cash one day before" line and quote the UPI reference instead. Somebody who
+has not paid online still gets the cash reminder, exactly as the rules require.
+Telling a resident to bring money they have already sent is the quickest way to
+make them stop trusting the confirmation.
+
+The **₹5,000 security deposit is unaffected** — it is by cheque either way, and
+the rules give no online route for it, so every message still asks for it.
 
 ---
 

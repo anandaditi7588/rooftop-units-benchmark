@@ -35,7 +35,11 @@
     <tr><th>Persons</th><td>{{ record.expected_persons }}</td></tr>
     <tr><th>Mobile</th><td>+91 {{ record.mobile }}</td></tr>
     <tr><th>Charge</th><td>₹{{ "{:,}".format(record.charge_inr) }}
-      <span class="small muted">cash, one day before</span></td></tr>
+      {% if record.payment %}
+      <span class="small muted">reported paid online</span>
+      {% else %}
+      <span class="small muted">cash, one day before</span>
+      {% endif %}</td></tr>
     <tr><th>Charge reported paid</th>
       <td>
         {% if record.payment %}
