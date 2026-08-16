@@ -18,6 +18,7 @@ from typing import Any, Iterator
 
 from gymform.settings import (
     BOOKING_APPROVALS_JSONL,
+    BOOKING_DELETIONS_JSONL,
     BOOKING_PAYMENTS_JSONL,
     BOOKINGS_CSV,
     BOOKINGS_JSONL,
@@ -57,6 +58,7 @@ CSV_COLUMNS: list[str] = [
     "payment_reported_at",
     "status",
     "decided_at",
+    "removal_reason",
 ]
 
 
@@ -72,6 +74,8 @@ def _csv_row(record: dict[str, Any]) -> dict[str, Any]:
     approval = record.get("approval") or {}
     row["status"] = record.get("status", "pending")
     row["decided_at"] = approval.get("decided_at", "")
+    removal = record.get("removal") or {}
+    row["removal_reason"] = removal.get("reason", "")
     return row
 
 
@@ -101,6 +105,7 @@ SHEET_HEADERS: dict[str, str] = {
     "payment_reported_at": "Payment reported",
     "status": "Status",
     "decided_at": "Decided at",
+    "removal_reason": "Removed because",
 }
 
 SHEET_NAME = "Hall bookings"
@@ -190,6 +195,34 @@ def record_decision(reference: str, decision: str, note: str = "") -> dict[str, 
     return _append(BOOKING_APPROVALS_JSONL, entry)
 
 
+def record_deletion(reference: str, reason: str = "", removed: bool = True) -> dict[str, Any]:
+    """The office striking a wrong booking off the list — or putting it back.
+
+    Nothing is erased. The resident's original submission stays exactly as they
+    signed it and this is written alongside, so the society can always answer
+    "who removed that booking, when, and why" — which is the whole reason a
+    booking system is trusted with the hall in the first place.
+
+    What changes is what the booking *does*: a removed booking stops holding
+    its slot, drops off the public calendar, and drops out of the office's list
+    unless they ask to see removed ones. Setting ``removed=False`` undoes it,
+    which is what makes the button safe to press.
+    """
+    entry = {
+        "reference": reference,
+        "removed": bool(removed),
+        "reason": reason,
+        "recorded_at": datetime.now(IST).isoformat(),
+    }
+    logger.info(
+        "Hall form: %s %s%s",
+        reference,
+        "removed by the office" if removed else "restored by the office",
+        f" — {reason}" if reason else "",
+    )
+    return _append(BOOKING_DELETIONS_JSONL, entry)
+
+
 def iter_bookings() -> Iterator[dict[str, Any]]:
     if not BOOKINGS_JSONL.exists():
         return
@@ -204,23 +237,51 @@ def iter_bookings() -> Iterator[dict[str, Any]]:
                 logger.warning("Hall form: skipping unreadable booking on line %d", number)
 
 
-def load_bookings(newest_first: bool = True) -> list[dict[str, Any]]:
-    """Every booking, each carrying its payment and decision."""
+def load_bookings(
+    newest_first: bool = True, include_removed: bool = False
+) -> list[dict[str, Any]]:
+    """Every booking, each carrying its payment, decision and removal.
+
+    Removed bookings are left out by default. That default is what frees the
+    slot: the clash check reads this list, so a booking the office has struck
+    off simply stops existing as far as the next resident is concerned.
+    """
     payments = _latest_by_reference(BOOKING_PAYMENTS_JSONL)
     decisions = _latest_by_reference(BOOKING_APPROVALS_JSONL)
-    records = list(iter_bookings())
-    for record in records:
+    removals = _latest_by_reference(BOOKING_DELETIONS_JSONL)
+    records = []
+    for record in iter_bookings():
         reference = record.get("reference", "")
+        removal = removals.get(reference)
+        record["removal"] = removal if (removal or {}).get("removed") else None
+        if record["removal"] and not include_removed:
+            continue
         record["payment"] = payments.get(reference)
         record["approval"] = decisions.get(reference)
-        record["status"] = (record["approval"] or {}).get("decision", "pending")
+        record["status"] = (
+            "removed" if record["removal"]
+            else (record["approval"] or {}).get("decision", "pending")
+        )
+        records.append(record)
     if newest_first:
         records.reverse()
     return records
 
 
-def find_booking(reference: str) -> dict[str, Any] | None:
+def find_booking(
+    reference: str, include_removed: bool = True
+) -> dict[str, Any] | None:
+    """One booking by reference.
+
+    Removed ones are included by default: the office still has to be able to
+    open, review and restore what it struck off.
+    """
     return next(
-        (b for b in load_bookings(newest_first=False) if b.get("reference") == reference),
+        (
+            b for b in load_bookings(
+                newest_first=False, include_removed=include_removed
+            )
+            if b.get("reference") == reference
+        ),
         None,
     )

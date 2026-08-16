@@ -586,3 +586,32 @@ input[type="date"], input[type="number"] {
 @media (min-width: 640px) {
   .choice-grid { grid-template-columns: 1fr 1fr; }
 }
+
+/* ---------- office-only destructive actions ---------- */
+
+/* Folded away behind a summary on purpose: removing a booking sits next to
+   Confirm and Reject, and it should take one deliberate extra click. */
+.danger-zone {
+  margin: 16px 0 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+
+.danger-zone > summary {
+  cursor: pointer;
+  padding: 12px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--danger);
+  list-style: none;
+}
+
+.danger-zone > summary::-webkit-details-marker { display: none; }
+.danger-zone > summary::before { content: "⚠ "; }
+.danger-zone > summary:hover { text-decoration: underline; }
+.danger-zone[open] > summary { margin-bottom: 6px; }
+
+.card.is-removed {
+  opacity: .72;
+  border-left: 4px solid var(--danger);
+}

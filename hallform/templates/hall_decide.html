@@ -10,7 +10,15 @@
     this booking?
   </h1>
 
-  {% if record.status != 'pending' %}
+  {% if record.status == 'removed' %}
+  <div class="alert alert-danger">
+    <strong>This booking was removed from the list</strong>
+    {%- if record.removal.reason %} — {{ record.removal.reason }}{% endif %}.
+    The slot is free and another resident may already have taken it. Deciding it
+    now will not put it back; use <strong>Restore</strong> on the
+    <a href="{{ base }}/admin">office page</a> for that.
+  </div>
+  {% elif record.status != 'pending' %}
   <div class="alert alert-warn">
     This booking is already marked
     <strong>{{ 'confirmed' if record.status == 'approved' else 'not confirmed' }}</strong>.

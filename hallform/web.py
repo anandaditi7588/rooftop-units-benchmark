@@ -510,12 +510,77 @@ def qr_png(request: Request, size: int = 10):
 # ---------------------------------------------------------------------------
 
 @hall_app.get("/admin", response_class=HTMLResponse, dependencies=[Depends(require_admin)])
-def admin_page(request: Request):
+def admin_page(request: Request, show_removed: int = 0):
+    records = storage.load_bookings(include_removed=bool(show_removed))
     return templates.TemplateResponse(
         request, "hall_admin.html",
         _template_context(
-            request, records=storage.load_bookings(), settings=get_settings()
+            request,
+            records=records,
+            settings=get_settings(),
+            show_removed=bool(show_removed),
+            removed_count=sum(
+                1 for booking in storage.load_bookings(include_removed=True)
+                if booking.get("status") == "removed"
+            ),
         ),
+    )
+
+
+@hall_app.post("/admin/delete/{reference}", dependencies=[Depends(require_admin)])
+async def admin_delete(request: Request, reference: str):
+    """Strike a wrong booking off the list. Office only — never the resident.
+
+    A resident who has booked the wrong date must ask the office; there is no
+    route on the public side that reaches this, by design. Someone who could
+    delete their own booking could also delete somebody else's if they ever got
+    hold of a reference, and the reference is printed on a confirmation page.
+
+    The submission itself is not erased — see storage.record_deletion. What
+    changes is that the slot is released, the booking leaves the public calendar
+    and the office's list, and the Google Sheet row is marked removed with the
+    reason.
+    """
+    record = storage.find_booking(reference)
+    if record is None:
+        raise HTTPException(404, "Unknown booking reference.")
+
+    form = await request.form()
+    reason = " ".join(str(form.get("reason") or "").split())[:300]
+
+    await run_in_threadpool(storage.record_deletion, reference, reason, True)
+    await run_in_threadpool(_sync_sheet, reference)
+    return RedirectResponse(f"{_base_path(request)}/admin", status_code=303)
+
+
+@hall_app.post("/admin/restore/{reference}", dependencies=[Depends(require_admin)])
+async def admin_restore(request: Request, reference: str):
+    """Undo a removal — including one made by mistake.
+
+    Restoring puts the booking back exactly as the resident submitted it, so a
+    slip of the finger on Remove costs nothing. It can fail: if another resident
+    has taken the slot in the meantime, they now hold it, and the office is told
+    so rather than the society quietly promising the same hall twice.
+    """
+    record = storage.find_booking(reference)
+    if record is None:
+        raise HTTPException(404, "Unknown booking reference.")
+
+    start = to_minutes(record.get("start_time", ""))
+    end = to_minutes(record.get("end_time", ""))
+    if start is not None and end is not None:
+        clash = find_clash(
+            [b for b in storage.load_bookings(newest_first=False)
+             if b.get("reference") != reference],
+            record.get("venue_key", ""), record.get("event_date", ""), start, end,
+        )
+        if clash is not None:
+            raise HTTPException(409, describe_clash(clash))
+
+    await run_in_threadpool(storage.record_deletion, reference, "", False)
+    await run_in_threadpool(_sync_sheet, reference)
+    return RedirectResponse(
+        f"{_base_path(request)}/admin#{reference}", status_code=303
     )
 
 
@@ -565,7 +630,7 @@ def admin_sheet_sync():
     if not settings.sheets_enabled:
         raise HTTPException(404, "No Google Sheet is configured.")
     sent, failed = 0, []
-    for record in storage.load_bookings(newest_first=False):
+    for record in storage.load_bookings(newest_first=False, include_removed=True):
         ok, detail = sheets.push_row(
             settings, storage.SHEET_NAME, storage.sheet_row(record)
         )

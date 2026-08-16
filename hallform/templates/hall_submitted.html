@@ -31,7 +31,18 @@
       <span class="small muted">refundable, by cheque</span></td></tr>
   </table>
 
-  {% if record.status == 'approved' %}
+  {% if record.status == 'removed' %}
+  <div class="alert alert-danger" style="margin-top:14px">
+    <strong>This booking has been removed by the society office.</strong>
+    The amenity is not reserved for you, and the slot is open to other residents.
+    {% if record.removal.reason %}<br><em>{{ record.removal.reason }}</em>{% endif %}
+    <div class="small" style="margin-top:6px">
+      If this is a mistake, contact the office quoting {{ record.reference }} —
+      they can put it back. Otherwise you are welcome to
+      <a href="{{ base }}/">make a fresh booking</a>.
+    </div>
+  </div>
+  {% elif record.status == 'approved' %}
   <div class="alert alert-ok" style="margin-top:14px">
     <strong>Confirmed by the society office.</strong> The amenity is reserved for you.
     {% if record.approval.note %}<br><em>{{ record.approval.note }}</em>{% endif %}

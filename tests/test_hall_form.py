@@ -48,6 +48,7 @@ def paths(tmp_path, monkeypatch):
         "BOOKINGS_CSV": tmp_path / "bookings.csv",
         "BOOKING_PAYMENTS_JSONL": tmp_path / "booking_payments.jsonl",
         "BOOKING_APPROVALS_JSONL": tmp_path / "booking_approvals.jsonl",
+        "BOOKING_DELETIONS_JSONL": tmp_path / "booking_deletions.jsonl",
     }
     for module in (settings_module, storage_module):
         for name, path in files.items():
@@ -548,3 +549,211 @@ def test_a_failing_sheet_never_costs_the_society_a_booking(client, monkeypatch):
 
     import hallform.storage as storage_module
     assert len(storage_module.load_bookings()) == 1
+
+
+# ---------------------------------------------------------------------------
+# Removing a wrong booking — office only
+# ---------------------------------------------------------------------------
+
+@pytest.fixture()
+def office(monkeypatch):
+    monkeypatch.setenv("GYM_ADMIN_USERNAME", "office")
+    monkeypatch.setenv("GYM_ADMIN_PASSWORD", "secret")
+    return ("office", "secret")
+
+
+def _book(client, **overrides) -> str:
+    response = client.post("/hall/submit", data=payload(**overrides))
+    assert response.status_code == 200, response.status_code
+    import hallform.storage as storage_module
+    return storage_module.load_bookings()[0]["reference"]
+
+
+def test_a_resident_cannot_remove_a_booking(client, office):
+    """The whole point: removal is the office's, and nobody reaches it without
+    the office login — not even the resident who made the booking."""
+    reference = _book(client)
+
+    response = client.post(
+        f"/hall/delete/{reference}", data={"reason": "changed my mind"}
+    )
+    assert response.status_code == 404          # no such public route
+
+    response = client.post(
+        f"/hall/admin/delete/{reference}", data={"reason": "changed my mind"}
+    )
+    assert response.status_code == 401          # office login required
+
+    import hallform.storage as storage_module
+    assert storage_module.find_booking(reference)["status"] == "pending"
+
+
+def test_removal_needs_a_login_even_when_none_is_configured(client, monkeypatch):
+    """Fails closed, like every other office page."""
+    for name in ("GYM_ADMIN_USERNAME", "GYM_ADMIN_PASSWORD",
+                 "RTU_AUTH_USERNAME", "RTU_AUTH_PASSWORD"):
+        monkeypatch.delenv(name, raising=False)
+    reference = _book(client)
+    assert client.post(
+        f"/hall/admin/delete/{reference}", data={"reason": "x"}
+    ).status_code == 503
+
+
+def test_the_office_can_remove_a_wrong_booking(client, office):
+    reference = _book(client)
+
+    response = client.post(
+        f"/hall/admin/delete/{reference}",
+        data={"reason": "Duplicate entry"},
+        auth=office,
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+    import hallform.storage as storage_module
+    assert storage_module.load_bookings() == []          # gone from the list
+    record = storage_module.find_booking(reference)      # but still on record
+    assert record["status"] == "removed"
+    assert record["removal"]["reason"] == "Duplicate entry"
+
+
+def test_removing_a_booking_frees_the_slot(client, office):
+    reference = _book(client)
+    client.post(
+        f"/hall/admin/delete/{reference}",
+        data={"reason": "Wrong date"}, auth=office, follow_redirects=False,
+    )
+
+    second = client.post(
+        "/hall/submit",
+        data=payload(resident_name="Amit Joshi", flat_number="D-101",
+                     email="amit@example.com", declaration_signature="Amit Joshi"),
+    )
+    assert second.status_code == 200
+
+
+def test_a_removed_booking_leaves_the_public_calendar(client, office):
+    reference = _book(client)
+    assert "Sunita Deshpande" in client.get("/hall/calendar").text
+
+    client.post(
+        f"/hall/admin/delete/{reference}",
+        data={"reason": "Test entry"}, auth=office, follow_redirects=False,
+    )
+    assert "Sunita Deshpande" not in client.get("/hall/calendar").text
+
+
+def test_the_resident_is_told_when_their_booking_is_removed(client, office):
+    reference = _book(client)
+    client.post(
+        f"/hall/admin/delete/{reference}",
+        data={"reason": "Hall needed for a society function"},
+        auth=office, follow_redirects=False,
+    )
+    page = client.get(f"/hall/submitted/{reference}")
+    assert page.status_code == 200
+    assert "removed by the society office" in page.text
+    assert "Hall needed for a society function" in page.text
+
+
+def test_nothing_is_erased_from_the_signed_record(client, office, paths):
+    """The society must always be able to answer who removed what, and why."""
+    reference = _book(client)
+    before = paths["BOOKINGS_JSONL"].read_text(encoding="utf-8")
+
+    client.post(
+        f"/hall/admin/delete/{reference}",
+        data={"reason": "Duplicate"}, auth=office, follow_redirects=False,
+    )
+
+    assert paths["BOOKINGS_JSONL"].read_text(encoding="utf-8") == before
+    entry = json.loads(
+        paths["BOOKING_DELETIONS_JSONL"].read_text(encoding="utf-8").strip()
+    )
+    assert entry["reference"] == reference
+    assert entry["removed"] is True
+    assert entry["reason"] == "Duplicate"
+    assert entry["recorded_at"]
+
+
+def test_the_office_can_undo_a_removal(client, office):
+    reference = _book(client)
+    client.post(
+        f"/hall/admin/delete/{reference}",
+        data={"reason": "Mistake"}, auth=office, follow_redirects=False,
+    )
+
+    response = client.post(
+        f"/hall/admin/restore/{reference}", auth=office, follow_redirects=False
+    )
+    assert response.status_code == 303
+
+    import hallform.storage as storage_module
+    assert storage_module.find_booking(reference)["status"] == "pending"
+    assert len(storage_module.load_bookings()) == 1
+    assert "Sunita Deshpande" in client.get("/hall/calendar").text
+
+
+def test_restoring_is_refused_when_someone_else_took_the_slot(client, office):
+    """Freeing the slot means somebody may take it. Undo must not double-book."""
+    first = _book(client)
+    client.post(
+        f"/hall/admin/delete/{first}",
+        data={"reason": "Wrong date"}, auth=office, follow_redirects=False,
+    )
+    client.post(
+        "/hall/submit",
+        data=payload(resident_name="Amit Joshi", flat_number="D-101",
+                     email="amit@example.com", declaration_signature="Amit Joshi"),
+    )
+
+    response = client.post(
+        f"/hall/admin/restore/{first}", auth=office, follow_redirects=False
+    )
+    assert response.status_code == 409
+    assert "Amit Joshi" in response.json()["detail"]
+
+    import hallform.storage as storage_module
+    assert storage_module.find_booking(first)["status"] == "removed"
+
+
+def test_removed_bookings_are_hidden_from_the_office_list_by_default(client, office):
+    reference = _book(client)
+    client.post(
+        f"/hall/admin/delete/{reference}",
+        data={"reason": "Duplicate"}, auth=office, follow_redirects=False,
+    )
+
+    hidden = client.get("/hall/admin", auth=office)
+    assert reference not in hidden.text
+    assert "Show 1 removed" in hidden.text
+
+    shown = client.get("/hall/admin?show_removed=1", auth=office)
+    assert reference in shown.text
+    assert "Duplicate" in shown.text
+    assert "Restore this booking" in shown.text
+
+
+def test_a_removal_reaches_the_google_sheet(client, office, monkeypatch):
+    pushed = []
+    import hallform.web as web_module
+
+    monkeypatch.setenv("GYM_SHEETS_WEBHOOK_URL", "https://script.example/exec")
+    monkeypatch.setattr(
+        web_module.sheets, "push_row",
+        lambda settings, sheet, row, key="reference": (
+            pushed.append(row) or (True, "ok")
+        ),
+    )
+
+    reference = _book(client)
+    client.post(
+        f"/hall/admin/delete/{reference}",
+        data={"reason": "Duplicate entry"}, auth=office, follow_redirects=False,
+    )
+
+    assert pushed[-1]["Status"] == "removed"
+    assert pushed[-1]["Removed because"] == "Duplicate entry"
+    # Same reference each time, so the sheet updates one row rather than
+    # collecting a second line for the same booking.
+    assert pushed[-1]["Reference"] == pushed[0]["Reference"] == reference

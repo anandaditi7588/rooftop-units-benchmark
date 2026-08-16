@@ -10,6 +10,13 @@
   <p style="margin:14px 0 0">
     <a class="btn btn-ghost" href="{{ base }}/admin/bookings.csv">Download CSV</a>
     <a class="btn btn-ghost" href="{{ base }}/calendar">Upcoming dates</a>
+    {% if show_removed %}
+    <a class="btn btn-ghost" href="{{ base }}/admin">Hide removed</a>
+    {% elif removed_count %}
+    <a class="btn btn-ghost" href="{{ base }}/admin?show_removed=1">
+      Show {{ removed_count }} removed
+    </a>
+    {% endif %}
   </p>
 </div>
 
@@ -62,13 +69,15 @@
 </div>
 
 {% for record in records %}
-<div class="card" id="{{ record.reference }}">
+<div class="card {% if record.status == 'removed' %}is-removed{% endif %}" id="{{ record.reference }}">
   <div class="section-head" style="justify-content:space-between">
     <h2>{{ record.venue_name }}</h2>
     <span class="small muted">{{ record.reference }}</span>
   </div>
   <p style="margin:0 0 10px">
-    {% if record.status == 'approved' %}
+    {% if record.status == 'removed' %}
+      <span class="pill pill-danger">Removed</span>
+    {% elif record.status == 'approved' %}
       <span class="pill pill-ok">Confirmed</span>
     {% elif record.status == 'rejected' %}
       <span class="pill pill-danger">Rejected</span>
@@ -113,6 +122,23 @@
     <tr><th>Signed</th><td>{{ record.declaration_signature }}{% if record.declaration_place %}, {{ record.declaration_place }}{% endif %}</td></tr>
   </table>
 
+  {% if record.status == 'removed' %}
+  <div class="alert alert-danger" style="margin-top:14px">
+    <strong>Removed from the booking list</strong>
+    on {{ record.removal.recorded_at[:16].replace('T', ' ') }}.
+    {% if record.removal.reason %}<br>Reason: <em>{{ record.removal.reason }}</em>{% endif %}
+    <div class="small" style="margin-top:6px">
+      The slot is free for other residents and this no longer appears on the
+      public calendar. The resident's original submission is kept — restoring
+      puts it back exactly as they sent it.
+    </div>
+  </div>
+  <form method="post" action="{{ base }}/admin/restore/{{ record.reference }}"
+        class="decision-bar">
+    <button type="submit" class="btn btn-ghost">Restore this booking</button>
+  </form>
+
+  {% else %}
   <form method="post" action="{{ base }}/admin/decision/{{ record.reference }}"
         class="decision-bar">
     <input type="text" name="note" placeholder="Note (optional) — e.g. key with the security desk"
@@ -128,6 +154,25 @@
     Confirming blocks this slot for every other resident. Rejecting releases it.
     Either way the resident is emailed and messaged.
   </p>
+
+  <details class="danger-zone">
+    <summary>Wrong booking? Remove it</summary>
+    <p class="small muted">
+      For a booking made in error — a test entry, a duplicate, or a resident who
+      picked the wrong date. It disappears from this list and the public
+      calendar, and the slot is freed. Nothing is emailed to the resident: if you
+      want to tell them their booking is not happening, use <strong>Reject</strong>
+      instead, which does message them.
+    </p>
+    <form method="post" action="{{ base }}/admin/delete/{{ record.reference }}"
+          class="decision-bar"
+          onsubmit="return confirm('Remove this booking for {{ record.resident_name }}?\n\nThe slot will be freed for other residents. You can restore it afterwards.');">
+      <input type="text" name="reason" class="decision-note" required
+             placeholder="Why are you removing it? e.g. duplicate entry">
+      <button type="submit" class="btn btn-reject">Remove from the list</button>
+    </form>
+  </details>
+  {% endif %}
 </div>
 {% else %}
 <div class="card">
